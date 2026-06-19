@@ -29,6 +29,10 @@ The one-time installer must be launched from an elevated PowerShell session beca
 
 For a click-driven install on this machine, double-click `Install-ElevatedDevHelper-AsAdmin.cmd` and approve the Windows UAC prompt. The launcher opens an elevated PowerShell process and runs the installer.
 
+The elevated installer window stays open after launch. A successful install should report an install location and a self-test result where `is_admin` is `true`.
+
+If a diagnostic shows `Elevated=False` and `Integrity=Medium Mandatory Level`, that diagnostic was run in a non-elevated process. That is expected for normal Codex Desktop shells, but not for the elevated installer window or the scheduled-task helper result.
+
 After installation, the helper root defaults to:
 
 `C:\dev\CodexElevatedHelper`
@@ -39,6 +43,13 @@ The queue, result, failure, and log folders are:
 - `C:\dev\CodexElevatedHelper\done`
 - `C:\dev\CodexElevatedHelper\failed`
 - `C:\dev\CodexElevatedHelper\logs`
+
+The installer also writes:
+
+- `C:\dev\CodexElevatedHelper\install-log.txt`
+- `C:\dev\CodexElevatedHelper\install-state.json`
+
+Use `Test-ElevationState.ps1` only to inspect the process where it is launched. It does not prove the scheduled task helper is elevated unless it is run by the helper itself.
 
 ## Reuse On Other Machines
 
