@@ -2,6 +2,20 @@
 
 All notable changes to the Codex Desktop Autonomy Kit. Dates are UTC.
 
+## v1.3.0 - 2026-06-28
+
+### Added
+- `Setup-Autonomy.ps1 -ConfigOnly -CodexRoot <path>` for isolated first-run config
+  verification without installing tools or touching the real `~/.codex`.
+- `Setup-Autonomy.ps1 -RefreshHelper` to launch the elevated helper installer when Doctor or
+  setup detects an installed helper script that differs from the repo copy.
+- Regression coverage that runs setup against a temporary Codex root and proves kit-managed
+  config, staged profiles, manifest creation, and custom-config preservation.
+
+### Changed
+- Setup now creates `config.toml` backups only before an actual overwrite. Custom configs left
+  unchanged no longer produce backup churn on every re-run.
+
 ## v1.2.0 - 2026-06-28
 
 ### Added

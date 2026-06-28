@@ -20,6 +20,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-ScriptSyntax.ps
 
 PASS: every non-INFO check reports PASS.
 
+`Test-InstallSurface.ps1` includes an isolated first-run config check that runs
+`Setup-Autonomy.ps1 -ConfigOnly -CodexRoot <temp>` and proves the generated config, staged
+profiles, and manifest land outside the real profile.
+
 ## Part 2 - No unrequested friction
 
 Hand Codex each task while the kit is the active config.

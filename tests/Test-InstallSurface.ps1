@@ -52,10 +52,38 @@ try {
         $setup -match 'Codex Desktop Autonomy Kit managed config' -and
         $setup -match 'custom config\.toml found; left unchanged' -and
         $setup -match 'manifest\.json' -and
-        $setup -match 'helper script differs from repo copy'
+        $setup -match 'helper script differs from repo copy' -and
+        $setup -match '\[switch\]\$ConfigOnly' -and
+        $setup -match '\[string\]\$CodexRoot' -and
+        $setup -match '\[switch\]\$RefreshHelper'
     )
-    Add-Result "setup_custom_config_guard" $(if ($ok) { "PASS" } else { "FAIL" }) "marker, staging manifest, custom guard, helper parity warning"
+    Add-Result "setup_custom_config_guard" $(if ($ok) { "PASS" } else { "FAIL" }) "marker, staging manifest, custom guard, isolated root, helper refresh warning"
 } catch { Add-Result "setup_custom_config_guard" "FAIL" $_.Exception.Message }
+
+try {
+    $tempRoot = Join-Path $env:TEMP ("codex-kit-configonly-" + [guid]::NewGuid().ToString("n"))
+    $setupPath = Join-Path $kit 'Setup-Autonomy.ps1'
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $setupPath -ConfigOnly -CodexRoot $tempRoot *> $null
+    $config = Join-Path $tempRoot 'config.toml'
+    $manifest = Join-Path $tempRoot 'autonomy-kit\manifest.json'
+    $freshOk = (
+        (Test-Path -LiteralPath $config) -and
+        (Test-Path -LiteralPath $manifest) -and
+        ((Get-Content -LiteralPath $config -Raw) -match 'Codex Desktop Autonomy Kit managed config')
+    )
+
+    "custom=true" | Set-Content -LiteralPath $config -Encoding UTF8
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $setupPath -ConfigOnly -CodexRoot $tempRoot *> $null
+    $customContent = Get-Content -LiteralPath $config -Raw
+    $backups = @(Get-ChildItem -LiteralPath $tempRoot -Filter 'config.toml.bak-*' -ErrorAction SilentlyContinue)
+    $customOk = ($customContent -match 'custom=true' -and $backups.Count -eq 0)
+
+    Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+    Add-Result "setup_configonly_isolated" $(if ($freshOk -and $customOk) { "PASS" } else { "FAIL" }) "fresh isolated root writes kit config+manifest; custom config unchanged without backup churn"
+} catch {
+    if ($tempRoot -and (Test-Path -LiteralPath $tempRoot)) { Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue }
+    Add-Result "setup_configonly_isolated" "FAIL" $_.Exception.Message
+}
 
 try {
     $doctor = Get-Content -LiteralPath (Join-Path $kit 'Doctor-Autonomy.ps1') -Raw

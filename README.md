@@ -1,6 +1,6 @@
 # Codex Desktop Autonomy Kit
 
-**Version 1.2.0 - Windows** - private personal kit for configuring Codex Desktop toward
+**Version 1.3.0 - Windows** - private personal kit for configuring Codex Desktop toward
 maximum practical software-development autonomy on Windows machines. See
 [CHANGELOG.md](CHANGELOG.md).
 
@@ -44,8 +44,21 @@ Then restart Codex Desktop so PATH and config changes load.
 
 `Setup-Autonomy.ps1` creates `~/.codex/config.toml` only if it does not already exist, or
 refreshes it only when it is clearly kit-managed. If you already have a custom config, it
-backs it up and stages the kit files under `~/.codex/autonomy-kit` for manual merge. This
-avoids breaking Codex with duplicate TOML keys.
+leaves it unchanged and stages the kit files under `~/.codex/autonomy-kit` for manual merge.
+Backups are created only before setup overwrites a kit-managed or forced config. This avoids
+breaking Codex with duplicate TOML keys.
+
+For non-destructive config-only verification, run setup against an isolated root:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Setup-Autonomy.ps1 -ConfigOnly -CodexRoot "$env:TEMP\codex-kit-check"
+```
+
+If `Doctor-Autonomy.ps1` reports the installed elevated helper is stale, refresh it with:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Setup-Autonomy.ps1 -RefreshHelper
+```
 
 Status check:
 

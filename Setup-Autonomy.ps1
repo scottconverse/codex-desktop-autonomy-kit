@@ -15,13 +15,16 @@ param(
     [switch]$SkipConfig,
     [switch]$SkipBrowsers,
     [switch]$SkipHelper,
-    [switch]$ForceConfig
+    [switch]$ForceConfig,
+    [switch]$ConfigOnly,
+    [string]$CodexRoot = "$env:USERPROFILE\.codex",
+    [switch]$RefreshHelper
 )
 
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $kit = $PSScriptRoot
-$kitVersion = "1.2.0"
+$kitVersion = "1.3.0"
 $configMarker = "# Codex Desktop Autonomy Kit managed config"
 
 function Step($m) { Write-Host "`n=== $m ===" -ForegroundColor Cyan }
@@ -46,8 +49,8 @@ function Get-FileHashText($path) {
     if (Test-Path -LiteralPath $path) { return (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash }
     return $null
 }
-function Write-GeneratedConfig($path, $coreText) {
-    $toml = @"
+function Get-GeneratedConfig($coreText) {
+    return @"
 $configMarker
 # version = "$kitVersion"
 
@@ -61,75 +64,80 @@ developer_instructions = '''
 $coreText
 '''
 "@
+}
+function Write-GeneratedConfig($path, $coreText) {
+    $toml = Get-GeneratedConfig -coreText $coreText
     $toml | Set-Content -LiteralPath $path -Encoding UTF8
 }
 
-Step "Python (user-scope) + python3 shim"
-$pyExe = Get-ChildItem "$env:LOCALAPPDATA\Programs\Python\Python3*\python.exe" -ErrorAction SilentlyContinue |
-    Sort-Object FullName -Descending | Select-Object -First 1
-if (-not $pyExe) {
-    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-        Warn "winget not found; install Python manually or install App Installer, then re-run."
-    } else {
-        winget install -e --id Python.Python.3.12 --scope user `
-            --accept-package-agreements --accept-source-agreements --disable-interactivity
-        $pyExe = Get-ChildItem "$env:LOCALAPPDATA\Programs\Python\Python3*\python.exe" -ErrorAction SilentlyContinue |
-            Sort-Object FullName -Descending | Select-Object -First 1
+if (-not $ConfigOnly) {
+    Step "Python (user-scope) + python3 shim"
+    $pyExe = Get-ChildItem "$env:LOCALAPPDATA\Programs\Python\Python3*\python.exe" -ErrorAction SilentlyContinue |
+        Sort-Object FullName -Descending | Select-Object -First 1
+    if (-not $pyExe) {
+        if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+            Warn "winget not found; install Python manually or install App Installer, then re-run."
+        } else {
+            winget install -e --id Python.Python.3.12 --scope user `
+                --accept-package-agreements --accept-source-agreements --disable-interactivity
+            $pyExe = Get-ChildItem "$env:LOCALAPPDATA\Programs\Python\Python3*\python.exe" -ErrorAction SilentlyContinue |
+                Sort-Object FullName -Descending | Select-Object -First 1
+        }
     }
-}
-if ($pyExe) {
-    $pydir = $pyExe.Directory.FullName
-    $py3 = Join-Path $pydir "python3.exe"
-    if (-not (Test-Path -LiteralPath $py3)) { Copy-Item $pyExe.FullName $py3 -Force }
-    Prepend-UserPath $pydir
-    Prepend-UserPath (Join-Path $pydir "Scripts")
-    Note "python: $(& $pyExe.FullName --version)"
-} else {
-    Warn "Python unavailable; later Python-based setup steps may be skipped."
-}
-
-Step "uv"
-if (-not (Test-Path "$env:USERPROFILE\.local\bin\uv.exe")) {
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
-}
-Prepend-UserPath "$env:USERPROFILE\.local\bin"
-if (Test-Path "$env:USERPROFILE\.local\bin\uv.exe") {
-    Note "uv: $(& "$env:USERPROFILE\.local\bin\uv.exe" --version 2>&1)"
-}
-
-Step "scoop"
-if (-not (Test-Path "$env:USERPROFILE\scoop\shims\scoop.ps1")) {
-    Invoke-Expression (Invoke-RestMethod -Uri "https://get.scoop.sh")
-}
-Prepend-UserPath "$env:USERPROFILE\scoop\shims"
-$scoop = "$env:USERPROFILE\scoop\shims\scoop.ps1"
-& $scoop bucket add main *> $null
-
-Step "core tools via scoop"
-$wanted = [ordered]@{ 'nodejs-lts' = 'node'; 'gh' = 'gh'; 'ripgrep' = 'rg'; 'jq' = 'jq'; 'sqlite' = 'sqlite3' }
-foreach ($pkg in $wanted.Keys) {
-    $cmd = $wanted[$pkg]
-    if (Get-Command $cmd -ErrorAction SilentlyContinue) {
-        Note "$cmd already present - skip"
+    if ($pyExe) {
+        $pydir = $pyExe.Directory.FullName
+        $py3 = Join-Path $pydir "python3.exe"
+        if (-not (Test-Path -LiteralPath $py3)) { Copy-Item $pyExe.FullName $py3 -Force }
+        Prepend-UserPath $pydir
+        Prepend-UserPath (Join-Path $pydir "Scripts")
+        Note "python: $(& $pyExe.FullName --version)"
     } else {
-        & $scoop install $pkg
+        Warn "Python unavailable; later Python-based setup steps may be skipped."
     }
-}
 
-Step "Playwright"
-$py3cmd = (Get-Command python3 -ErrorAction SilentlyContinue).Source
-if (-not $py3cmd -and $pyExe) { $py3cmd = Join-Path $pyExe.Directory.FullName "python3.exe" }
-if ($py3cmd) {
-    & $py3cmd -m pip install --quiet --upgrade playwright
-    if (-not $SkipBrowsers) { & $py3cmd -m playwright install }
-    Note "playwright: $(& $py3cmd -m playwright --version 2>&1)"
-} else {
-    Warn "python3 not found; skipped Playwright install."
+    Step "uv"
+    if (-not (Test-Path "$env:USERPROFILE\.local\bin\uv.exe")) {
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
+    }
+    Prepend-UserPath "$env:USERPROFILE\.local\bin"
+    if (Test-Path "$env:USERPROFILE\.local\bin\uv.exe") {
+        Note "uv: $(& "$env:USERPROFILE\.local\bin\uv.exe" --version 2>&1)"
+    }
+
+    Step "scoop"
+    if (-not (Test-Path "$env:USERPROFILE\scoop\shims\scoop.ps1")) {
+        Invoke-Expression (Invoke-RestMethod -Uri "https://get.scoop.sh")
+    }
+    Prepend-UserPath "$env:USERPROFILE\scoop\shims"
+    $scoop = "$env:USERPROFILE\scoop\shims\scoop.ps1"
+    & $scoop bucket add main *> $null
+
+    Step "core tools via scoop"
+    $wanted = [ordered]@{ 'nodejs-lts' = 'node'; 'gh' = 'gh'; 'ripgrep' = 'rg'; 'jq' = 'jq'; 'sqlite' = 'sqlite3' }
+    foreach ($pkg in $wanted.Keys) {
+        $cmd = $wanted[$pkg]
+        if (Get-Command $cmd -ErrorAction SilentlyContinue) {
+            Note "$cmd already present - skip"
+        } else {
+            & $scoop install $pkg
+        }
+    }
+
+    Step "Playwright"
+    $py3cmd = (Get-Command python3 -ErrorAction SilentlyContinue).Source
+    if (-not $py3cmd -and $pyExe) { $py3cmd = Join-Path $pyExe.Directory.FullName "python3.exe" }
+    if ($py3cmd) {
+        & $py3cmd -m pip install --quiet --upgrade playwright
+        if (-not $SkipBrowsers) { & $py3cmd -m playwright install }
+        Note "playwright: $(& $py3cmd -m playwright --version 2>&1)"
+    } else {
+        Warn "python3 not found; skipped Playwright install."
+    }
 }
 
 if (-not $SkipConfig) {
     Step "Codex config/profile staging"
-    $cx = "$env:USERPROFILE\.codex"
+    $cx = $CodexRoot
     $profileDir = Join-Path $cx "autonomy-kit"
     New-Item -ItemType Directory -Force -Path $profileDir | Out-Null
 
@@ -153,6 +161,7 @@ if (-not $SkipConfig) {
 
     $config = Join-Path $cx "config.toml"
     $core = Get-Content -LiteralPath "$kit\CODEX-Desktop-Core.md" -Raw
+    $generated = Get-GeneratedConfig -coreText $core
     if (-not (Test-Path -LiteralPath $config)) {
         Write-GeneratedConfig -path $config -coreText $core
         Note "created kit-managed config.toml"
@@ -160,10 +169,14 @@ if (-not $SkipConfig) {
         $raw = Get-Content -LiteralPath $config -Raw
         $isKitManaged = ($raw -like "$configMarker*") -or ($raw -match 'Codex Desktop Autonomy Kit managed config')
         $looksLikeOldKitConfig = ($raw -match 'Codex Desktop Autonomy Core \(compact\)' -and $raw -match 'approval_policy\s*=\s*"never"')
-        Backup-File $config
         if ($ForceConfig -or $isKitManaged -or $looksLikeOldKitConfig) {
-            Write-GeneratedConfig -path $config -coreText $core
-            Note "refreshed kit-managed config.toml"
+            if ($raw -eq $generated) {
+                Note "kit-managed config.toml already current"
+            } else {
+                Backup-File $config
+                Write-GeneratedConfig -path $config -coreText $core
+                Note "refreshed kit-managed config.toml"
+            }
         } else {
             Note "custom config.toml found; left unchanged"
             Note "merge staged files from $profileDir when ready"
@@ -171,7 +184,7 @@ if (-not $SkipConfig) {
     }
 }
 
-if (-not $SkipHelper) {
+if (-not $SkipHelper -and -not $ConfigOnly) {
     Step "elevated dev helper"
     $helperTask = Get-ScheduledTask -TaskName "CodexElevatedDevHelper" -ErrorAction SilentlyContinue
     $helperInstall = Join-Path $kit "elevated-dev-helper\Install-ElevatedDevHelper-AsAdmin.cmd"
@@ -181,7 +194,12 @@ if (-not $SkipHelper) {
         $repoHash = Get-FileHashText (Join-Path $kit "elevated-dev-helper\ElevatedDevHelper.ps1")
         $installedHash = Get-FileHashText $installedHelper
         if ($repoHash -and $installedHash -and $repoHash -ne $installedHash) {
-            Warn "installed helper script differs from repo copy; run elevated-dev-helper\Install-ElevatedDevHelper-AsAdmin.cmd to refresh it"
+            if ($RefreshHelper) {
+                Note "installed helper differs; launching refresh installer (Windows UAC prompt expected)..."
+                Start-Process -FilePath $helperInstall -Verb RunAs -Wait
+            } else {
+                Warn "installed helper script differs from repo copy; run setup with -RefreshHelper or run elevated-dev-helper\Install-ElevatedDevHelper-AsAdmin.cmd"
+            }
         }
     } elseif (Test-Path -LiteralPath $helperInstall) {
         Note "launching helper installer (Windows UAC prompt expected)..."
@@ -193,10 +211,12 @@ if (-not $SkipHelper) {
     }
 }
 
-Step "Summary"
-foreach ($t in 'python3','pip','uv','scoop','node','npm','npx','gh','rg','jq','sqlite3') {
-    $src = (Get-Command $t -ErrorAction SilentlyContinue).Source
-    "{0,-10} {1}" -f $t, $(if ($src) { 'OK' } else { 'missing (open a new shell)' }) | Write-Host
+if (-not $ConfigOnly) {
+    Step "Summary"
+    foreach ($t in 'python3','pip','uv','scoop','node','npm','npx','gh','rg','jq','sqlite3') {
+        $src = (Get-Command $t -ErrorAction SilentlyContinue).Source
+        "{0,-10} {1}" -f $t, $(if ($src) { 'OK' } else { 'missing (open a new shell)' }) | Write-Host
+    }
 }
 
 Write-Host "`nNEXT:" -ForegroundColor Green
