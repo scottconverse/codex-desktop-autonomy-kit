@@ -14,6 +14,8 @@ A babysitting failure is Pole 1 breaking. An out-of-control failure is Pole 2 br
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-AutonomyKit.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-InstallSurface.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-ScriptSyntax.ps1
 ```
 
 PASS: every non-INFO check reports PASS.

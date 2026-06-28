@@ -2,6 +2,24 @@
 
 All notable changes to the Codex Desktop Autonomy Kit. Dates are UTC.
 
+## v1.2.0 - 2026-06-28
+
+### Added
+- Kit-owned vs customized config handling. Setup now writes a marker on generated
+  `config.toml`, refreshes only kit-managed/old-kit configs by default, and leaves custom
+  configs staged for manual merge.
+- Staged profile manifest with SHA-256 hashes.
+- Richer Doctor checks for staged profile freshness, possible duplicate top-level TOML keys,
+  helper queue/done/failed/log folder writability, and installed-helper parity.
+- `tests/Test-InstallSurface.ps1` for setup/doctor/uninstall/helper surface regression checks.
+- `tests/Test-ScriptSyntax.ps1` for PowerShell parser checks across shipped scripts.
+
+### Changed
+- `Uninstall-Autonomy.ps1` now removes `config.toml` only when it is clearly kit-managed and
+  no backup exists; otherwise it restores backups or leaves custom config untouched.
+- Setup reports stale installed helper scripts instead of silently treating an existing helper
+  task as fully current.
+
 ## v1.1.0 - 2026-06-28
 
 ### Added

@@ -1,6 +1,8 @@
 # Example Codex Desktop autonomy config.
 # Back up ~/.codex/config.toml before merging this by hand.
 # Setup-Autonomy.ps1 writes this whole file only when config.toml does not already exist.
+# Kit-managed generated configs begin with:
+# # Codex Desktop Autonomy Kit managed config
 
 approval_policy = "never"
 sandbox_mode = "danger-full-access"

@@ -1,6 +1,6 @@
 # Codex Desktop Autonomy Kit
 
-**Version 1.1.0 - Windows** - private personal kit for configuring Codex Desktop toward
+**Version 1.2.0 - Windows** - private personal kit for configuring Codex Desktop toward
 maximum practical software-development autonomy on Windows machines. See
 [CHANGELOG.md](CHANGELOG.md).
 
@@ -9,8 +9,8 @@ maximum practical software-development autonomy on Windows machines. See
 - `Setup-Autonomy.ps1` - one-command fresh-machine bootstrap. Installs common user-scope
   development tooling, stages Codex autonomy profiles, creates first-run config when no
   config exists, and triggers the elevated helper installer if needed.
-- `Doctor-Autonomy.ps1` - read-only status dashboard for toolchain, config, profile staging,
-  and helper state.
+- `Doctor-Autonomy.ps1` - read-only status dashboard for toolchain, config, staged profile
+  freshness, helper task/folder state, and installed-helper parity.
 - `Uninstall-Autonomy.ps1` - reverses the config layer and optionally unregisters the
   elevated helper. Leaves the general-purpose toolchain alone.
 - `CODEX-Desktop-Core.md` - compact standing instructions for everyday speed.
@@ -42,9 +42,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Setup-Autonomy.ps1
 
 Then restart Codex Desktop so PATH and config changes load.
 
-`Setup-Autonomy.ps1` creates `~/.codex/config.toml` only if it does not already exist. If you
-already have a config, it backs it up and stages the kit files under `~/.codex/autonomy-kit`
-for manual merge. This avoids breaking Codex with duplicate TOML keys.
+`Setup-Autonomy.ps1` creates `~/.codex/config.toml` only if it does not already exist, or
+refreshes it only when it is clearly kit-managed. If you already have a custom config, it
+backs it up and stages the kit files under `~/.codex/autonomy-kit` for manual merge. This
+avoids breaking Codex with duplicate TOML keys.
 
 Status check:
 
@@ -71,6 +72,8 @@ The helper is intentionally bounded. It supports named development actions and l
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-NoHardcodedPaths.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-InstallSurface.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-ScriptSyntax.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-AutonomyKit.ps1
 ```
 

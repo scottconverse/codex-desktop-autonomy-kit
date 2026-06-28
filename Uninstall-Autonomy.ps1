@@ -1,6 +1,11 @@
 <#
 .SYNOPSIS
     Reverses the config layer installed by Setup-Autonomy.ps1.
+
+.DESCRIPTION
+    Restores the newest config.toml backup when available. If no backup exists, removes only
+    a config.toml that is clearly kit-managed. Removes staged autonomy profiles. Optionally
+    unregisters the elevated helper task. Leaves the general-purpose toolchain alone.
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
@@ -9,6 +14,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $cx = "$env:USERPROFILE\.codex"
+$configMarker = "# Codex Desktop Autonomy Kit managed config"
 
 function Restore-LatestBak($path) {
     $dir = Split-Path -Parent $path
@@ -27,16 +33,29 @@ function Restore-LatestBak($path) {
 
 if ($RemoveHelper) {
     $h = Get-ScheduledTask -TaskName "CodexElevatedDevHelper" -ErrorAction SilentlyContinue
-    if ($h -and $PSCmdlet.ShouldProcess("CodexElevatedDevHelper", "Unregister-ScheduledTask")) {
-        Unregister-ScheduledTask -TaskName "CodexElevatedDevHelper" -Confirm:$false
-        Write-Host "removed scheduled task: CodexElevatedDevHelper"
+    if ($h) {
+        if ($PSCmdlet.ShouldProcess("CodexElevatedDevHelper", "Unregister-ScheduledTask")) {
+            Stop-ScheduledTask -TaskName "CodexElevatedDevHelper" -ErrorAction SilentlyContinue
+            Unregister-ScheduledTask -TaskName "CodexElevatedDevHelper" -Confirm:$false
+            Write-Host "removed scheduled task: CodexElevatedDevHelper"
+        }
+    } else {
+        Write-Host "CodexElevatedDevHelper not present - skip"
     }
 }
 
 $config = Join-Path $cx "config.toml"
 if (Test-Path -LiteralPath $config) {
     if (-not (Restore-LatestBak $config)) {
-        Write-Host "no config.toml backup found; left current config in place"
+        $raw = Get-Content -LiteralPath $config -Raw
+        if ($raw -like "$configMarker*") {
+            if ($PSCmdlet.ShouldProcess($config, "remove kit-managed config.toml")) {
+                Remove-Item -LiteralPath $config -Force
+                Write-Host "removed kit-managed config.toml (no backup found)"
+            }
+        } else {
+            Write-Host "custom config.toml found and no backup exists; left it in place"
+        }
     }
 }
 
@@ -48,4 +67,4 @@ if (Test-Path -LiteralPath $profileDir) {
     }
 }
 
-Write-Host "`nDONE. Toolchain left alone. Restart Codex Desktop for config changes to take effect."
+Write-Host "`nDONE. Toolchain and helper files under C:\dev left alone. Restart Codex Desktop for config changes to take effect."
