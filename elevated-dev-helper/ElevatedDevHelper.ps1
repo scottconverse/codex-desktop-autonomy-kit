@@ -31,11 +31,13 @@ function Assert-Admin {
 function Assert-TrustedPath {
     param([string]$Path)
     $resolved = [System.IO.Path]::GetFullPath($Path)
+    # Resolve the running user's actual profile instead of assuming C:\Users\<name>.
+    # C:\dev is the helper's own development root.
     $trustedRoots = @(
         "C:\dev\",
-        "C:\Users\scott\Documents\Codex\",
-        "C:\Users\scott\.codex\",
-        "C:\Users\scott\AppData\Local\Temp\CodexElevatedHelper\"
+        "$env:USERPROFILE\Documents\Codex\",
+        "$env:USERPROFILE\.codex\",
+        "$env:USERPROFILE\AppData\Local\Temp\CodexElevatedHelper\"
     )
     foreach ($root in $trustedRoots) {
         if ($resolved.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -52,11 +54,15 @@ function Invoke-LoggedProcess {
         [int]$TimeoutSeconds = 1800
     )
 
+    # Robust child execution. Two traps avoided:
+    #   - Sync ReadToEnd AFTER WaitForExit can deadlock on chatty children.
+    #   - Start-Process redirection can hang when grandchildren inherit file handles.
+    # Windows PowerShell 5.1 lacks ProcessStartInfo.ArgumentList, so build Arguments.
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $FilePath
-    foreach ($arg in $Arguments) {
-        [void]$psi.ArgumentList.Add($arg)
-    }
+    $psi.Arguments = (($Arguments | ForEach-Object {
+        if ($_ -match '\s') { '"' + $_ + '"' } else { [string]$_ }
+    }) -join ' ')
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
     $psi.UseShellExecute = $false
@@ -65,17 +71,36 @@ function Invoke-LoggedProcess {
     $proc = New-Object System.Diagnostics.Process
     $proc.StartInfo = $psi
     [void]$proc.Start()
+    $outTask = $proc.StandardOutput.ReadToEndAsync()
+    $errTask = $proc.StandardError.ReadToEndAsync()
 
     if (-not $proc.WaitForExit($TimeoutSeconds * 1000)) {
         try { $proc.Kill() } catch {}
         throw "Process timed out: $FilePath"
     }
+    [void]$outTask.Wait(5000)
+    [void]$errTask.Wait(5000)
 
     return @{
         exit_code = $proc.ExitCode
-        stdout = $proc.StandardOutput.ReadToEnd()
-        stderr = $proc.StandardError.ReadToEnd()
+        stdout = $(if ($outTask.IsCompleted) { $outTask.Result } else { "" })
+        stderr = $(if ($errTask.IsCompleted) { $errTask.Result } else { "" })
     }
+}
+
+function Resolve-Winget {
+    # The winget App Execution Alias can fail inside non-interactive elevated
+    # scheduled-task sessions. Resolve the real DesktopAppInstaller binary.
+    $pkg = Get-AppxPackage -Name Microsoft.DesktopAppInstaller -ErrorAction SilentlyContinue |
+        Sort-Object Version -Descending | Select-Object -First 1
+    if ($pkg -and $pkg.InstallLocation) {
+        $exe = Join-Path $pkg.InstallLocation "winget.exe"
+        if (Test-Path -LiteralPath $exe) { return $exe }
+    }
+    $glob = Get-ChildItem "C:\Program Files\WindowsApps\Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe\winget.exe" -ErrorAction SilentlyContinue |
+        Sort-Object FullName -Descending | Select-Object -First 1
+    if ($glob) { return $glob.FullName }
+    throw "Could not resolve a real winget.exe (DesktopAppInstaller package not found)."
 }
 
 function Invoke-HelperAction {
@@ -92,15 +117,15 @@ function Invoke-HelperAction {
 
         "WingetInstall" {
             if (-not $Job.packageId) { throw "WingetInstall requires packageId." }
-            $args = @("install", "--id", [string]$Job.packageId, "--exact", "--accept-package-agreements", "--accept-source-agreements")
+            $args = @("install", "--id", [string]$Job.packageId, "--exact", "--silent", "--disable-interactivity", "--accept-package-agreements", "--accept-source-agreements")
             if ($Job.scope -eq "user") { $args += @("--scope", "user") }
-            return Invoke-LoggedProcess -FilePath "winget.exe" -Arguments $args -TimeoutSeconds 3600
+            return Invoke-LoggedProcess -FilePath (Resolve-Winget) -Arguments $args -TimeoutSeconds 3600
         }
 
         "WingetUpgrade" {
             if (-not $Job.packageId) { throw "WingetUpgrade requires packageId." }
-            $args = @("upgrade", "--id", [string]$Job.packageId, "--exact", "--accept-package-agreements", "--accept-source-agreements")
-            return Invoke-LoggedProcess -FilePath "winget.exe" -Arguments $args -TimeoutSeconds 3600
+            $args = @("upgrade", "--id", [string]$Job.packageId, "--exact", "--silent", "--disable-interactivity", "--accept-package-agreements", "--accept-source-agreements")
+            return Invoke-LoggedProcess -FilePath (Resolve-Winget) -Arguments $args -TimeoutSeconds 3600
         }
 
         "RunTrustedPowerShellScript" {

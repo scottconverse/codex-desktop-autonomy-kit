@@ -1,0 +1,15 @@
+# Example Codex Desktop autonomy config.
+# Back up ~/.codex/config.toml before merging this by hand.
+# Setup-Autonomy.ps1 writes this whole file only when config.toml does not already exist.
+
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+
+[windows]
+sandbox = "elevated"
+
+# Paste CODEX-Desktop-Core.md here for a compact daily profile, or paste
+# GEN5-Codex-Desktop-Autonomous-Software-Development.md for the full profile.
+developer_instructions = '''
+<PASTE CODEX-Desktop-Core.md HERE>
+'''

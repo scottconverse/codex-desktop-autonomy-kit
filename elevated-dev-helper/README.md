@@ -1,6 +1,7 @@
 # Codex Elevated Development Helper
 
-This kit is a reusable Windows helper pattern for machines where Codex Desktop cannot launch its shell with an administrator token.
+This kit is a reusable Windows helper pattern for machines where Codex Desktop cannot launch
+its shell with an administrator token.
 
 ## What It Does
 
@@ -53,10 +54,27 @@ Use `Test-ElevationState.ps1` only to inspect the process where it is launched. 
 
 ## Reuse On Other Machines
 
-Copy this folder to another personal development machine, review the paths in the scripts, then perform the same one-time elevated setup there. The GEN5 addendum can be appended to that machine's persistent Codex instructions.
+Copy this folder to another personal development machine, review the scripts, then perform the
+same one-time elevated setup there. Trusted script roots resolve from the current
+`$env:USERPROFILE` plus `C:\dev`, so the helper is not tied to one Windows account name. The
+GEN5 addendum can be appended to that machine's persistent Codex instructions.
+
+## Notes On Inline Elevation
+
+Prompt text cannot bypass Windows UAC, app policy, or Codex Desktop's enforced permissions.
+If the desktop app cannot run its inline shell elevated, the correct path is this helper: a
+one-time owner-approved scheduled task that runs with highest privileges and accepts bounded,
+structured development jobs.
 
 ## Safety Model
 
-The helper accepts only structured jobs and known action names. It logs every job start, success, and failure. It restricts trusted script execution to local development roots. It is intended for reversible development infrastructure, not destructive system administration.
+The helper accepts only structured jobs and known action names. It logs every job start,
+success, and failure. It restricts trusted script execution to local development roots. It is
+intended for reversible development infrastructure, not destructive system administration.
+
+`RunTrustedPowerShellScript` intentionally creates a no-per-action-UAC local-admin path for
+scripts under trusted development roots. That is the accepted single-owner development trade:
+powerful enough for SDKs, installers, services, and firewall checks, but still structured and
+logged.
 
 Expand the action list only when a real development task needs it, and keep each action structured instead of adding a generic unrestricted command action.
