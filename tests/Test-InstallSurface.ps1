@@ -65,6 +65,20 @@ try {
 } catch { Add-Result "double_click_launchers" "FAIL" $_.Exception.Message }
 
 try {
+    $adminLauncher = Get-Content -LiteralPath (Join-Path $kit 'elevated-dev-helper\Install-ElevatedDevHelper-AsAdmin.cmd') -Raw
+    $helperInstaller = Get-Content -LiteralPath (Join-Path $kit 'elevated-dev-helper\Install-ElevatedDevHelper.ps1') -Raw
+    $ok = (
+        $adminLauncher -notmatch '-NoExit' -and
+        $adminLauncher -match '-Wait' -and
+        $adminLauncher -match '-PassThru' -and
+        $adminLauncher -match 'exit \$p\.ExitCode' -and
+        $helperInstaller -match 'AddSeconds\(30\)' -and
+        $helperInstaller -match 'self-test did not confirm administrator execution'
+    )
+    Add-Result "elevated_installer_closes" $(if ($ok) { "PASS" } else { "FAIL" }) "admin launcher waits, propagates exit code, and closes after installer exits"
+} catch { Add-Result "elevated_installer_closes" "FAIL" $_.Exception.Message }
+
+try {
     $configExample = Get-Content -LiteralPath (Join-Path $kit 'config.autonomy.example.toml') -Raw
     $ok = (
         $configExample -match 'approval_policy\s*=\s*"never"' -and

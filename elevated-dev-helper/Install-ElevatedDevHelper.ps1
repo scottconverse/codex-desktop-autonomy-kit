@@ -59,17 +59,32 @@ $jobPath = Join-Path (Join-Path $InstallRoot "queue") ($jobId + ".json")
 } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $jobPath -Encoding UTF8
 
 Start-ScheduledTask -TaskName $TaskName
-Start-Sleep -Seconds 3
 
 $resultPath = Join-Path (Join-Path $InstallRoot "done") ($jobId + ".result.json")
 $errorPath = Join-Path (Join-Path $InstallRoot "failed") ($jobId + ".error.json")
-if (Test-Path -LiteralPath $resultPath) {
-    "[$((Get-Date).ToUniversalTime().ToString("o"))] Self-test succeeded: $resultPath" | Add-Content -LiteralPath $installLog -Encoding UTF8
-} elseif (Test-Path -LiteralPath $errorPath) {
-    "[$((Get-Date).ToUniversalTime().ToString("o"))] Self-test failed: $errorPath" | Add-Content -LiteralPath $installLog -Encoding UTF8
-} else {
-    "[$((Get-Date).ToUniversalTime().ToString("o"))] Self-test did not complete within 3 seconds. Check Task Scheduler and helper logs." | Add-Content -LiteralPath $installLog -Encoding UTF8
+$deadline = (Get-Date).AddSeconds(30)
+while ((Get-Date) -lt $deadline) {
+    if ((Test-Path -LiteralPath $resultPath) -or (Test-Path -LiteralPath $errorPath)) { break }
+    Start-Sleep -Milliseconds 500
 }
+
+if (Test-Path -LiteralPath $errorPath) {
+    "[$((Get-Date).ToUniversalTime().ToString("o"))] Self-test failed: $errorPath" | Add-Content -LiteralPath $installLog -Encoding UTF8
+    throw "Elevated helper self-test failed: $errorPath"
+}
+
+if (-not (Test-Path -LiteralPath $resultPath)) {
+    "[$((Get-Date).ToUniversalTime().ToString("o"))] Self-test did not complete within 30 seconds. Check Task Scheduler and helper logs." | Add-Content -LiteralPath $installLog -Encoding UTF8
+    throw "Elevated helper self-test did not complete within 30 seconds."
+}
+
+$selfTest = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
+if ($selfTest.status -ne "ok" -or -not $selfTest.result.ok -or -not $selfTest.result.is_admin) {
+    "[$((Get-Date).ToUniversalTime().ToString("o"))] Self-test returned an unexpected result: $resultPath" | Add-Content -LiteralPath $installLog -Encoding UTF8
+    throw "Elevated helper self-test did not confirm administrator execution: $resultPath"
+}
+
+"[$((Get-Date).ToUniversalTime().ToString("o"))] Self-test succeeded: $resultPath" | Add-Content -LiteralPath $installLog -Encoding UTF8
 
 Write-Host "Installed $TaskName at $InstallRoot for $userId"
 Write-Host "Install log: $installLog"

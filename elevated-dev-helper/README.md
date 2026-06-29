@@ -28,9 +28,9 @@ This is not an unrestricted admin command broker. It intentionally refuses arbit
 
 The one-time installer must be launched from an elevated PowerShell session because Windows UAC controls creation of highest-privilege scheduled tasks.
 
-For a click-driven install on this machine, double-click `Install-ElevatedDevHelper-AsAdmin.cmd` and approve the Windows UAC prompt. The launcher opens an elevated PowerShell process and runs the installer.
+For a click-driven install on this machine, double-click `Install-ElevatedDevHelper-AsAdmin.cmd` and approve the Windows UAC prompt. The launcher opens an elevated PowerShell process, runs the installer, waits for the self-test, and closes the elevated window when finished.
 
-The elevated installer window stays open after launch. A successful install should report an install location and a self-test result where `is_admin` is `true`.
+The elevated installer window closes after completion. A successful install writes an install log and a self-test result where `is_admin` is `true`.
 
 If a diagnostic shows `Elevated=False` and `Integrity=Medium Mandatory Level`, that diagnostic was run in a non-elevated process. That is expected for normal Codex Desktop shells, but not for the elevated installer window or the scheduled-task helper result.
 

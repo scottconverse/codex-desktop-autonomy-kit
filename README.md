@@ -1,6 +1,6 @@
 # Codex Desktop Autonomy Kit
 
-**Version 1.4.0 - Windows** - private personal kit for configuring Codex Desktop toward
+**Version 1.4.2 - Windows** - private personal kit for configuring Codex Desktop toward
 maximum practical software-development autonomy on Windows machines. See
 [CHANGELOG.md](CHANGELOG.md).
 
@@ -52,7 +52,8 @@ breaking Codex with duplicate TOML keys.
 Status check: double-click `Doctor-Autonomy.cmd`.
 
 If the elevated helper is stale, the installer offers to refresh it in the same flow. Approve
-the Windows administrator prompt when you choose yes.
+the Windows administrator prompt when you choose yes. The elevated installer window closes
+after the helper install and self-test complete.
 
 ## Elevated Helper Setup
 

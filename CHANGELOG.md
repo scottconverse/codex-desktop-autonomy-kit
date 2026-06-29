@@ -2,6 +2,16 @@
 
 All notable changes to the Codex Desktop Autonomy Kit. Dates are UTC.
 
+## v1.4.2 - 2026-06-28
+
+### Fixed
+- The elevated helper installer no longer leaves an Administrator PowerShell window open
+  after a successful click-driven refresh.
+- The helper admin launcher now waits for the elevated installer and propagates its exit
+  code back to the calling installer.
+- Helper install self-test now fails the installer if it does not complete or does not prove
+  administrator execution.
+
 ## v1.4.1 - 2026-06-28
 
 ### Changed
