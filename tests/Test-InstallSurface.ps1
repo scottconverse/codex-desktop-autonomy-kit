@@ -29,11 +29,34 @@ try {
         'Uninstall-Autonomy.ps1',
         'CODEX-Desktop-Core.md',
         'GEN5-Codex-Desktop-Autonomous-Software-Development.md',
-        'config.autonomy.example.toml'
+        'config.autonomy.example.toml',
+        'Install-Autonomy.cmd',
+        'Doctor-Autonomy.cmd',
+        'Uninstall-Autonomy.cmd',
+        'Refresh-ElevatedHelper.cmd',
+        'Run-Tests.cmd'
     )
     $missing = @($required | Where-Object { -not (Test-Path -LiteralPath (Join-Path $kit $_)) })
     Add-Result "required_files" $(if ($missing.Count -eq 0) { "PASS" } else { "FAIL" }) $(if ($missing.Count) { "missing: $($missing -join ', ')" } else { "all present" })
 } catch { Add-Result "required_files" "FAIL" $_.Exception.Message }
+
+try {
+    $launchers = @{
+        'Install-Autonomy.cmd' = 'Setup-Autonomy.ps1'
+        'Doctor-Autonomy.cmd' = 'Doctor-Autonomy.ps1'
+        'Uninstall-Autonomy.cmd' = 'Uninstall-Autonomy.ps1'
+        'Refresh-ElevatedHelper.cmd' = 'Install-ElevatedDevHelper-AsAdmin.cmd'
+        'Run-Tests.cmd' = 'Test-AutonomyKit.ps1'
+    }
+    $missingLinks = @()
+    foreach ($launcher in $launchers.Keys) {
+        $raw = Get-Content -LiteralPath (Join-Path $kit $launcher) -Raw
+        if ($raw -notmatch [regex]::Escape($launchers[$launcher]) -or $raw -notmatch 'pause') {
+            $missingLinks += $launcher
+        }
+    }
+    Add-Result "double_click_launchers" $(if ($missingLinks.Count -eq 0) { "PASS" } else { "FAIL" }) $(if ($missingLinks.Count) { "bad launchers: $($missingLinks -join ', ')" } else { "all launchers point at expected scripts and pause for user-visible output" })
+} catch { Add-Result "double_click_launchers" "FAIL" $_.Exception.Message }
 
 try {
     $configExample = Get-Content -LiteralPath (Join-Path $kit 'config.autonomy.example.toml') -Raw

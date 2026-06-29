@@ -1,6 +1,6 @@
 # Codex Desktop Autonomy Kit
 
-**Version 1.3.1 - Windows** - private personal kit for configuring Codex Desktop toward
+**Version 1.4.0 - Windows** - private personal kit for configuring Codex Desktop toward
 maximum practical software-development autonomy on Windows machines. See
 [CHANGELOG.md](CHANGELOG.md).
 
@@ -9,10 +9,15 @@ maximum practical software-development autonomy on Windows machines. See
 - `Setup-Autonomy.ps1` - one-command fresh-machine bootstrap. Installs common user-scope
   development tooling, stages Codex autonomy profiles, creates first-run config when no
   config exists, and triggers the elevated helper installer if needed.
+- `Install-Autonomy.cmd` - double-click installer wrapper for normal use.
 - `Doctor-Autonomy.ps1` - read-only status dashboard for toolchain, config, staged profile
   freshness, helper task/folder state, and installed-helper parity.
+- `Doctor-Autonomy.cmd` - double-click doctor/status wrapper.
 - `Uninstall-Autonomy.ps1` - reverses the config layer and optionally unregisters the
   elevated helper. Leaves the general-purpose toolchain alone.
+- `Uninstall-Autonomy.cmd` - double-click uninstall wrapper.
+- `Refresh-ElevatedHelper.cmd` - double-click elevated-helper refresh wrapper.
+- `Run-Tests.cmd` - double-click test runner wrapper.
 - `CODEX-Desktop-Core.md` - compact standing instructions for everyday speed.
 - `GEN5-Codex-Desktop-Autonomous-Software-Development.md` - full/depth Codex instruction
   profile for broad or high-blast-radius work.
@@ -32,13 +37,9 @@ Use the elevated helper only when a machine needs a controlled way for non-admin
 
 ## Quick Start
 
-From a clean Windows/Codex box, clone the kit and run the bootstrap from a non-admin shell:
+From a clean Windows/Codex box, clone or download the kit, then double-click:
 
-```powershell
-git clone https://github.com/scottconverse/codex-desktop-autonomy-kit.git
-cd codex-desktop-autonomy-kit
-powershell -NoProfile -ExecutionPolicy Bypass -File .\Setup-Autonomy.ps1
-```
+`Install-Autonomy.cmd`
 
 Then restart Codex Desktop so PATH and config changes load.
 
@@ -48,23 +49,10 @@ leaves it unchanged and stages the kit files under `~/.codex/autonomy-kit` for m
 Backups are created only before setup overwrites a kit-managed or forced config. This avoids
 breaking Codex with duplicate TOML keys.
 
-For non-destructive config-only verification, run setup against an isolated root:
+Status check: double-click `Doctor-Autonomy.cmd`.
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\Setup-Autonomy.ps1 -ConfigOnly -CodexRoot "$env:TEMP\codex-kit-check"
-```
-
-If `Doctor-Autonomy.ps1` reports the installed elevated helper is stale, refresh it with:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\Setup-Autonomy.ps1 -RefreshHelper
-```
-
-Status check:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\Doctor-Autonomy.ps1
-```
+If Doctor reports the installed elevated helper is stale, double-click
+`Refresh-ElevatedHelper.cmd` and approve the Windows administrator prompt.
 
 ## Elevated Helper Setup
 
@@ -83,12 +71,7 @@ The helper is intentionally bounded. It supports named development actions and l
 
 ## Tests
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-NoHardcodedPaths.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-InstallSurface.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-ScriptSyntax.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-AutonomyKit.ps1
-```
+Double-click `Run-Tests.cmd`.
 
 The behavioral tests in `tests/TEST-PLAN.md` must be run under the active Codex Desktop
 configuration.

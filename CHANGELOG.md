@@ -2,6 +2,17 @@
 
 All notable changes to the Codex Desktop Autonomy Kit. Dates are UTC.
 
+## v1.4.0 - 2026-06-28
+
+### Added
+- Double-click root launchers:
+  - `Install-Autonomy.cmd`
+  - `Doctor-Autonomy.cmd`
+  - `Uninstall-Autonomy.cmd`
+  - `Refresh-ElevatedHelper.cmd`
+  - `Run-Tests.cmd`
+- README quick start now presents the no-CLI path first.
+
 ## v1.3.1 - 2026-06-28
 
 ### Fixed
