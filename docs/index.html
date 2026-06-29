@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Codex Desktop Autonomy Kit</title>
+  <meta name="description" content="A click-first Windows setup kit for configuring Codex Desktop toward maximum practical local development autonomy.">
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #0f172a;
+      --muted: #475569;
+      --line: #dbe3ef;
+      --panel: #ffffff;
+      --blue: #2563eb;
+      --green: #16a34a;
+      --gold: #ca8a04;
+      --bg: #f8fafc;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Segoe UI, Arial, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.55;
+    }
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .hero {
+      min-height: 82vh;
+      display: grid;
+      align-items: end;
+      background:
+        linear-gradient(180deg, rgba(15,23,42,.28), rgba(15,23,42,.78)),
+        url("assets/codex-autonomy-architecture.svg") center 44% / min(1180px, 96vw) auto no-repeat,
+        #eaf1fb;
+      border-bottom: 1px solid var(--line);
+    }
+    .hero-inner {
+      width: min(1120px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 64px 0 54px;
+      color: #fff;
+    }
+    .release {
+      display: inline-block;
+      padding: 4px 10px;
+      border: 1px solid rgba(255,255,255,.42);
+      border-radius: 999px;
+      font-size: 14px;
+      background: rgba(15,23,42,.38);
+    }
+    h1 {
+      margin: 18px 0 16px;
+      max-width: 900px;
+      font-size: clamp(46px, 7vw, 86px);
+      line-height: .95;
+      letter-spacing: 0;
+    }
+    .lead {
+      max-width: 780px;
+      font-size: 21px;
+      color: #e5edf8;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 30px;
+    }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+      padding: 0 16px;
+      border-radius: 8px;
+      font-weight: 700;
+      background: #fff;
+      color: var(--ink);
+      border: 1px solid rgba(255,255,255,.9);
+    }
+    .button.secondary {
+      background: rgba(15,23,42,.32);
+      color: #fff;
+      border-color: rgba(255,255,255,.52);
+    }
+    main {
+      width: min(1120px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 54px 0 74px;
+    }
+    section { margin: 0 0 64px; }
+    h2 {
+      font-size: 34px;
+      line-height: 1.15;
+      margin: 0 0 18px;
+      letter-spacing: 0;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 22px;
+    }
+    .card h3 { margin: 0 0 8px; font-size: 20px; }
+    .card p { margin: 0; color: var(--muted); }
+    .steps {
+      display: grid;
+      gap: 12px;
+      counter-reset: step;
+    }
+    .step {
+      counter-increment: step;
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      gap: 16px;
+      align-items: start;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+    }
+    .step:before {
+      content: counter(step);
+      display: grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #eff6ff;
+      color: var(--blue);
+      font-weight: 800;
+    }
+    .architecture {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+    code {
+      padding: 2px 5px;
+      border-radius: 5px;
+      background: #e2e8f0;
+      font-family: Consolas, monospace;
+      font-size: .94em;
+    }
+    .callout {
+      border-left: 5px solid var(--green);
+      background: #f0fdf4;
+      padding: 18px 20px;
+      border-radius: 8px;
+    }
+    footer {
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      padding-top: 28px;
+    }
+    @media (max-width: 860px) {
+      .grid { grid-template-columns: 1fr; }
+      .hero {
+        min-height: 760px;
+        background:
+          linear-gradient(180deg, rgba(15,23,42,.18), rgba(15,23,42,.82)),
+          url("assets/codex-autonomy-architecture.svg") center 76px / 720px auto no-repeat,
+          #eaf1fb;
+      }
+      h1 { font-size: 48px; }
+      .lead { font-size: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-inner">
+      <span class="release">Version 1.5.0 for Windows</span>
+      <h1>Codex Desktop Autonomy Kit</h1>
+      <p class="lead">A click-first setup kit that configures Codex Desktop for practical local software-development autonomy: persistent instructions, full local development access, toolchain bootstrap, diagnostics, and a bounded elevated helper.</p>
+      <div class="actions">
+        <a class="button" href="https://github.com/scottconverse/codex-desktop-autonomy-kit">View on GitHub</a>
+        <a class="button secondary" href="USER-MANUAL.md">Read the manual</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <h2>What it does</h2>
+      <div class="grid">
+        <article class="card">
+          <h3>Configures Codex</h3>
+          <p>Creates or refreshes a kit-managed <code>~/.codex/config.toml</code> with autonomy-oriented settings and persistent developer instructions.</p>
+        </article>
+        <article class="card">
+          <h3>Installs useful tools</h3>
+          <p>Bootstraps common user-scope development tools: Python, uv, Node.js, GitHub CLI, ripgrep, jq, SQLite, and Playwright.</p>
+        </article>
+        <article class="card">
+          <h3>Handles elevation</h3>
+          <p>Optionally installs a scheduled-task helper so approved development infrastructure actions can run with administrator rights.</p>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>Designed for no-CLI operation</h2>
+      <div class="steps">
+        <div class="step"><div><strong>Install or update.</strong><br>Double-click <code>Install-Autonomy.cmd</code>. The installer runs setup, Doctor, and helper refresh checks.</div></div>
+        <div class="step"><div><strong>Approve UAC only when needed.</strong><br>The helper path asks for Windows administrator approval during initial setup or refresh.</div></div>
+        <div class="step"><div><strong>Restart Codex Desktop.</strong><br>After restart, the kit is active through Codex Desktop configuration. There is no special invocation phrase.</div></div>
+        <div class="step"><div><strong>Maintain by double-clicking.</strong><br>Use Doctor, Refresh Helper, Run Tests, or Uninstall from the root launcher files.</div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Architecture</h2>
+      <img class="architecture" src="assets/codex-autonomy-architecture.svg" alt="Codex Desktop Autonomy Kit architecture diagram">
+    </section>
+
+    <section>
+      <h2>Safety model</h2>
+      <div class="callout">
+        The kit is intentionally powerful because it is for owner-controlled Windows development machines. It preserves custom Codex configs by default, creates backups before overwriting kit-managed configs, and keeps the elevated helper structured around named development actions with logs and result files.
+      </div>
+    </section>
+
+    <section>
+      <h2>Who it is for</h2>
+      <div class="grid">
+        <article class="card">
+          <h3>Solo builders</h3>
+          <p>People who want Codex Desktop to finish local setup, builds, tests, and repairs without turning every task into a checklist.</p>
+        </article>
+        <article class="card">
+          <h3>Windows developers</h3>
+          <p>Users who need practical Windows support for services, SDKs, firewall rules, installers, and development tooling.</p>
+        </article>
+        <article class="card">
+          <h3>Kit maintainers</h3>
+          <p>People who want a documented pattern for no-CLI install, diagnostics, uninstall, versioned manifests, and regression tests.</p>
+        </article>
+      </div>
+    </section>
+
+    <footer>
+      <p>Codex Desktop Autonomy Kit v1.5.0. Review scripts before installing on any machine you care about. Higher-priority Codex, project, OS, legal, and safety rules still apply.</p>
+    </footer>
+  </main>
+</body>
+</html>

@@ -7,8 +7,8 @@
     ~/.codex/autonomy-kit, creates or refreshes kit-managed ~/.codex/config.toml, and offers
     the elevated helper installer if the helper task is missing.
 
-    Existing customized config.toml is backed up and left unchanged. The kit files are staged
-    for manual merge so setup is safe to re-run on machines with hand-edited Codex config.
+    Existing customized config.toml is left unchanged. The kit files are staged for manual
+    merge so setup is safe to re-run on machines with hand-edited Codex config.
 #>
 [CmdletBinding()]
 param(
@@ -24,7 +24,7 @@ param(
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $kit = $PSScriptRoot
-$kitVersion = "1.3.0"
+$kitVersion = "1.5.0"
 $configMarker = "# Codex Desktop Autonomy Kit managed config"
 
 function Step($m) { Write-Host "`n=== $m ===" -ForegroundColor Cyan }

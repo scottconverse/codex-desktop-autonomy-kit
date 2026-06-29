@@ -1,8 +1,23 @@
 # Codex Desktop Autonomy Kit
 
-**Version 1.4.2 - Windows** - private personal kit for configuring Codex Desktop toward
-maximum practical software-development autonomy on Windows machines. See
+**Version 1.5.0 - Windows** - a click-first setup kit for configuring Codex Desktop toward
+maximum practical software-development autonomy on Windows development machines. See
 [CHANGELOG.md](CHANGELOG.md).
+
+[Landing page](docs/index.html) | [User manual](docs/USER-MANUAL.md) | [Elevated helper details](elevated-dev-helper/README.md)
+
+![Codex Desktop Autonomy Kit architecture](docs/assets/codex-autonomy-architecture.svg)
+
+## What It Does
+
+Codex Desktop Autonomy Kit turns a Windows Codex Desktop install into a more capable local
+development collaborator. It stages persistent Codex instructions, configures the Codex
+sandbox for full local development access, installs common user-scope tooling, and optionally
+installs a bounded elevated helper for development tasks that need administrator rights.
+
+The kit is designed around a no-CLI normal path: clone or download the repo, double-click
+`Install-Autonomy.cmd`, approve Windows UAC only when the elevated helper needs setup or
+refresh, then restart Codex Desktop.
 
 ## Contents
 
@@ -65,7 +80,6 @@ The helper is intentionally bounded. It supports named development actions and l
 
 ## Safety Notes
 
-- Keep this repo private.
 - Review scripts before installing on a new machine.
 - Do not store credentials, tokens, helper queue jobs, helper logs, or machine-specific generated state in this repo.
 - Higher-priority Codex, project, OS, legal, and safety rules still apply.

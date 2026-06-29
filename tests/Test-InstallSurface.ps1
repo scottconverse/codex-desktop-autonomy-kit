@@ -34,7 +34,12 @@ try {
         'Doctor-Autonomy.cmd',
         'Uninstall-Autonomy.cmd',
         'Refresh-ElevatedHelper.cmd',
-        'Run-Tests.cmd'
+        'Run-Tests.cmd',
+        'docs\index.html',
+        'docs\USER-MANUAL.md',
+        'docs\assets\codex-autonomy-architecture.svg',
+        'docs\discussions\01-welcome-and-installation.md',
+        'docs\discussions\02-design-boundaries-and-roadmap.md'
     )
     $missing = @($required | Where-Object { -not (Test-Path -LiteralPath (Join-Path $kit $_)) })
     Add-Result "required_files" $(if ($missing.Count -eq 0) { "PASS" } else { "FAIL" }) $(if ($missing.Count) { "missing: $($missing -join ', ')" } else { "all present" })
@@ -102,6 +107,33 @@ try {
     )
     Add-Result "setup_custom_config_guard" $(if ($ok) { "PASS" } else { "FAIL" }) "marker, staging manifest, custom guard, isolated root, helper refresh warning"
 } catch { Add-Result "setup_custom_config_guard" "FAIL" $_.Exception.Message }
+
+try {
+    $version = '1.5.0'
+    $surfaces = @(
+        'README.md',
+        'CHANGELOG.md',
+        'Setup-Autonomy.ps1',
+        'docs\index.html',
+        'docs\USER-MANUAL.md'
+    )
+    $missingVersion = @()
+    foreach ($surface in $surfaces) {
+        $raw = Get-Content -LiteralPath (Join-Path $kit $surface) -Raw
+        if ($raw -notmatch [regex]::Escape($version)) { $missingVersion += $surface }
+    }
+    $readme = Get-Content -LiteralPath (Join-Path $kit 'README.md') -Raw
+    $manual = Get-Content -LiteralPath (Join-Path $kit 'docs\USER-MANUAL.md') -Raw
+    $landing = Get-Content -LiteralPath (Join-Path $kit 'docs\index.html') -Raw
+    $ok = (
+        $missingVersion.Count -eq 0 -and
+        $readme -notmatch 'Keep this repo private|private personal kit' -and
+        $readme -match 'docs/assets/codex-autonomy-architecture\.svg' -and
+        $manual -match 'assets/codex-autonomy-architecture\.svg' -and
+        $landing -match 'assets/codex-autonomy-architecture\.svg'
+    )
+    Add-Result "public_docs_versioning" $(if ($ok) { "PASS" } else { "FAIL" }) $(if ($missingVersion.Count) { "missing version in: $($missingVersion -join ', ')" } else { "public docs include current version and architecture graphic" })
+} catch { Add-Result "public_docs_versioning" "FAIL" $_.Exception.Message }
 
 try {
     $tempRoot = Join-Path $env:TEMP ("codex-kit-configonly-" + [guid]::NewGuid().ToString("n"))

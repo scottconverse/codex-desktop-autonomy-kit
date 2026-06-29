@@ -1,0 +1,127 @@
+# Codex Desktop Autonomy Kit User Manual
+
+Version 1.5.0 for Windows.
+
+![Codex Desktop Autonomy Kit architecture](assets/codex-autonomy-architecture.svg)
+
+## Overview
+
+Codex Desktop Autonomy Kit is a Windows setup kit for people who want Codex Desktop to act
+as a more capable local development collaborator. It installs common development tooling,
+stages persistent Codex instruction profiles, creates or refreshes a kit-managed Codex
+configuration, and provides a bounded elevated helper for development tasks that need
+administrator rights.
+
+The normal workflow is click-first. You should not need to run command-line commands to
+install, check, refresh, test, or uninstall the kit.
+
+## What Gets Installed
+
+- `~/.codex/config.toml` when no custom config exists, or when the existing config is
+  clearly kit-managed.
+- `~/.codex/autonomy-kit/` containing the staged compact profile, full profile, config
+  example, and manifest.
+- User-scope development tools when missing: Python, uv, Node.js, GitHub CLI, ripgrep, jq,
+  SQLite, and Playwright.
+- Optional elevated helper under `C:\dev\CodexElevatedHelper` after you approve Windows UAC.
+
+## Click-First Controls
+
+- `Install-Autonomy.cmd` installs or updates the kit, runs Doctor, and offers to refresh the
+  elevated helper if it is stale.
+- `Doctor-Autonomy.cmd` shows a read-only status report.
+- `Refresh-ElevatedHelper.cmd` refreshes the elevated helper and asks for UAC approval.
+- `Run-Tests.cmd` runs the shipped test suite.
+- `Uninstall-Autonomy.cmd` turns the kit off by restoring/removing the Codex config layer
+  and staged profiles. It leaves general tools and helper files in place.
+
+## Install
+
+1. Download or clone the repo.
+2. Double-click `Install-Autonomy.cmd`.
+3. Approve Windows UAC if the helper installer appears.
+4. Restart Codex Desktop.
+
+After restart, there is no special invocation phrase. The kit is active through Codex
+Desktop's config file and persistent developer instructions.
+
+## Check Status
+
+Double-click `Doctor-Autonomy.cmd`.
+
+Doctor reports:
+
+- toolchain paths,
+- whether `~/.codex/config.toml` is present and kit-managed,
+- whether autonomy settings are active,
+- whether staged profile files are current,
+- whether duplicate top-level TOML keys are likely,
+- elevated helper task state,
+- helper queue/result/log directory availability,
+- installed helper script parity against the repo copy.
+
+## Update
+
+Pull or download the latest repo version, then double-click `Install-Autonomy.cmd`.
+
+If your Codex config is kit-managed, setup refreshes it. If your config is custom, setup
+leaves it unchanged and stages current kit files under `~/.codex/autonomy-kit` for manual
+merge.
+
+## Uninstall
+
+Double-click `Uninstall-Autonomy.cmd`.
+
+This turns the kit off for Codex Desktop by restoring the newest `config.toml.bak-*` backup
+when one exists, or by removing a clearly kit-managed config when no backup exists. It also
+removes staged files from `~/.codex/autonomy-kit`.
+
+It does not remove Python, Node.js, GitHub CLI, ripgrep, jq, SQLite, Playwright, or the
+helper files under `C:\dev`. Those are intentionally left alone because they may be useful
+outside this kit.
+
+## Elevated Helper
+
+Codex Desktop may run as a normal user process even when a development task needs elevated
+Windows rights. The optional helper solves that with a one-time owner-approved scheduled
+task that runs with highest privileges.
+
+The helper accepts structured jobs only. Current supported actions are:
+
+- `CheckAdmin`
+- `WingetInstall`
+- `WingetUpgrade`
+- `RunTrustedPowerShellScript`
+- `StartService`
+- `StopService`
+- `RestartService`
+- `OpenDevFirewallPort`
+- `RegisterDevScheduledTask`
+
+The helper is powerful by design. It is intended for single-owner development machines where
+the owner wants Codex to complete local setup, service, SDK, firewall, and toolchain tasks
+without repeated UAC prompts after the helper is installed.
+
+## Files And Responsibilities
+
+- `CODEX-Desktop-Core.md` is the compact daily instruction profile.
+- `GEN5-Codex-Desktop-Autonomous-Software-Development.md` is the deeper operating profile
+  for broader work.
+- `config.autonomy.example.toml` is the manual merge template for custom Codex configs.
+- `Setup-Autonomy.ps1` does the real setup work behind `Install-Autonomy.cmd`.
+- `Doctor-Autonomy.ps1` does the read-only status work behind `Doctor-Autonomy.cmd`.
+- `Uninstall-Autonomy.ps1` does the scoped uninstall work behind `Uninstall-Autonomy.cmd`.
+- `elevated-dev-helper/` contains the optional scheduled-task helper.
+- `tests/` contains regression and capability checks.
+
+## Versioning
+
+The current public release is v1.5.0. Setup writes the same version into the staged manifest
+at `~/.codex/autonomy-kit/manifest.json`.
+
+## Safety Notes
+
+- Read scripts before installing on a machine you care about.
+- Do not commit machine-specific helper logs, queued jobs, secrets, or tokens.
+- Keep the helper on development machines you control.
+- Higher-priority Codex, project, OS, legal, and safety rules still apply.

@@ -2,6 +2,19 @@
 
 All notable changes to the Codex Desktop Autonomy Kit. Dates are UTC.
 
+## v1.5.0 - 2026-06-28
+
+### Added
+- Public-facing landing page under `docs/index.html`.
+- Full user manual under `docs/USER-MANUAL.md`.
+- Professional architecture graphic shared by the README, user manual, and landing page.
+- Seed GitHub Discussion posts under `docs/discussions/`.
+
+### Changed
+- README now describes the project as a public click-first Windows kit instead of a private
+  personal repo.
+- Setup manifest version now writes the current kit version.
+
 ## v1.4.2 - 2026-06-28
 
 ### Fixed
