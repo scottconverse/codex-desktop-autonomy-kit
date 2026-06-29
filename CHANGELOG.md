@@ -2,6 +2,13 @@
 
 All notable changes to the Codex Desktop Autonomy Kit. Dates are UTC.
 
+## v1.3.1 - 2026-06-28
+
+### Fixed
+- Repeat `Setup-Autonomy.ps1 -ConfigOnly` runs on an already-current kit-managed
+  `config.toml` no longer create backups due only to encoding or line-ending differences.
+- `tests/Test-InstallSurface.ps1` now proves repeat kit-managed setup has no backup churn.
+
 ## v1.3.0 - 2026-06-28
 
 ### Added

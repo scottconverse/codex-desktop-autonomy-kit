@@ -1,6 +1,6 @@
 # Codex Desktop Autonomy Kit
 
-**Version 1.3.0 - Windows** - private personal kit for configuring Codex Desktop toward
+**Version 1.3.1 - Windows** - private personal kit for configuring Codex Desktop toward
 maximum practical software-development autonomy on Windows machines. See
 [CHANGELOG.md](CHANGELOG.md).
 

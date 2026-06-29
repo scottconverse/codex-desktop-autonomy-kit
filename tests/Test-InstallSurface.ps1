@@ -71,6 +71,9 @@ try {
         (Test-Path -LiteralPath $manifest) -and
         ((Get-Content -LiteralPath $config -Raw) -match 'Codex Desktop Autonomy Kit managed config')
     )
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $setupPath -ConfigOnly -CodexRoot $tempRoot *> $null
+    $kitBackups = @(Get-ChildItem -LiteralPath $tempRoot -Filter 'config.toml.bak-*' -ErrorAction SilentlyContinue)
+    $repeatKitOk = ($kitBackups.Count -eq 0)
 
     "custom=true" | Set-Content -LiteralPath $config -Encoding UTF8
     & powershell -NoProfile -ExecutionPolicy Bypass -File $setupPath -ConfigOnly -CodexRoot $tempRoot *> $null
@@ -79,7 +82,7 @@ try {
     $customOk = ($customContent -match 'custom=true' -and $backups.Count -eq 0)
 
     Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
-    Add-Result "setup_configonly_isolated" $(if ($freshOk -and $customOk) { "PASS" } else { "FAIL" }) "fresh isolated root writes kit config+manifest; custom config unchanged without backup churn"
+    Add-Result "setup_configonly_isolated" $(if ($freshOk -and $repeatKitOk -and $customOk) { "PASS" } else { "FAIL" }) "fresh isolated root writes kit config+manifest; repeat kit/custom configs avoid backup churn"
 } catch {
     if ($tempRoot -and (Test-Path -LiteralPath $tempRoot)) { Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue }
     Add-Result "setup_configonly_isolated" "FAIL" $_.Exception.Message

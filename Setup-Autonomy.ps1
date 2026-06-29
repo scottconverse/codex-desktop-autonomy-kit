@@ -65,6 +65,10 @@ $coreText
 '''
 "@
 }
+function Normalize-ConfigText($text) {
+    if ($null -eq $text) { return "" }
+    return (($text -replace "^\uFEFF", "") -replace "`r`n", "`n").TrimEnd()
+}
 function Write-GeneratedConfig($path, $coreText) {
     $toml = Get-GeneratedConfig -coreText $coreText
     $toml | Set-Content -LiteralPath $path -Encoding UTF8
@@ -170,7 +174,7 @@ if (-not $SkipConfig) {
         $isKitManaged = ($raw -like "$configMarker*") -or ($raw -match 'Codex Desktop Autonomy Kit managed config')
         $looksLikeOldKitConfig = ($raw -match 'Codex Desktop Autonomy Core \(compact\)' -and $raw -match 'approval_policy\s*=\s*"never"')
         if ($ForceConfig -or $isKitManaged -or $looksLikeOldKitConfig) {
-            if ($raw -eq $generated) {
+            if ((Normalize-ConfigText $raw) -eq (Normalize-ConfigText $generated)) {
                 Note "kit-managed config.toml already current"
             } else {
                 Backup-File $config
