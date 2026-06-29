@@ -2,6 +2,12 @@
 
 All notable changes to the Codex Desktop Autonomy Kit. Dates are UTC.
 
+## v1.4.1 - 2026-06-28
+
+### Changed
+- `Install-Autonomy.cmd` is now the one-stop installer/updater: it runs setup, runs Doctor,
+  detects a stale elevated helper, and offers to refresh it from the same double-click flow.
+
 ## v1.4.0 - 2026-06-28
 
 ### Added

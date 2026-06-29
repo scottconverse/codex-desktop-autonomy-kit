@@ -55,7 +55,13 @@ try {
             $missingLinks += $launcher
         }
     }
-    Add-Result "double_click_launchers" $(if ($missingLinks.Count -eq 0) { "PASS" } else { "FAIL" }) $(if ($missingLinks.Count) { "bad launchers: $($missingLinks -join ', ')" } else { "all launchers point at expected scripts and pause for user-visible output" })
+    $installer = Get-Content -LiteralPath (Join-Path $kit 'Install-Autonomy.cmd') -Raw
+    $oneStopInstaller = (
+        $installer -match 'Doctor-Autonomy\.ps1' -and
+        $installer -match 'Install-ElevatedDevHelper-AsAdmin\.cmd' -and
+        $installer -match 'Refresh elevated helper now'
+    )
+    Add-Result "double_click_launchers" $(if ($missingLinks.Count -eq 0 -and $oneStopInstaller) { "PASS" } else { "FAIL" }) $(if ($missingLinks.Count) { "bad launchers: $($missingLinks -join ', ')" } elseif (-not $oneStopInstaller) { "installer is not one-stop" } else { "all launchers point at expected scripts; installer includes doctor + helper refresh flow" })
 } catch { Add-Result "double_click_launchers" "FAIL" $_.Exception.Message }
 
 try {

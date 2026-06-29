@@ -9,7 +9,7 @@ maximum practical software-development autonomy on Windows machines. See
 - `Setup-Autonomy.ps1` - one-command fresh-machine bootstrap. Installs common user-scope
   development tooling, stages Codex autonomy profiles, creates first-run config when no
   config exists, and triggers the elevated helper installer if needed.
-- `Install-Autonomy.cmd` - double-click installer wrapper for normal use.
+- `Install-Autonomy.cmd` - double-click one-stop installer/updater for normal use.
 - `Doctor-Autonomy.ps1` - read-only status dashboard for toolchain, config, staged profile
   freshness, helper task/folder state, and installed-helper parity.
 - `Doctor-Autonomy.cmd` - double-click doctor/status wrapper.
@@ -51,8 +51,8 @@ breaking Codex with duplicate TOML keys.
 
 Status check: double-click `Doctor-Autonomy.cmd`.
 
-If Doctor reports the installed elevated helper is stale, double-click
-`Refresh-ElevatedHelper.cmd` and approve the Windows administrator prompt.
+If the elevated helper is stale, the installer offers to refresh it in the same flow. Approve
+the Windows administrator prompt when you choose yes.
 
 ## Elevated Helper Setup
 
