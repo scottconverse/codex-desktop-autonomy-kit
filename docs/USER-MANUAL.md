@@ -24,6 +24,9 @@ install, check, refresh, test, or uninstall the kit.
 - User-scope development tools when missing: Python, uv, Node.js, GitHub CLI, ripgrep, jq,
   SQLite, and Playwright.
 - Optional elevated helper under `C:\dev\CodexElevatedHelper` after you approve Windows UAC.
+- A capability self-assessment rule appended to `~/.codex/AGENTS.md` inside marker comments,
+  so every session is told to probe its access rather than assert untested limits.
+- The `capability-check` skill under `~/.codex/skills/capability-check/`.
 
 ## Click-First Controls
 
@@ -77,6 +80,9 @@ This turns the kit off for Codex Desktop by restoring the newest `config.toml.ba
 when one exists, or by removing a clearly kit-managed config when no backup exists. It also
 removes staged files from `~/.codex/autonomy-kit`.
 
+It removes only the kit-authored block from `AGENTS.md`, keeping any content you wrote there,
+and removes the installed `capability-check` skill.
+
 It does not remove Python, Node.js, GitHub CLI, ripgrep, jq, SQLite, Playwright, or the
 helper files under the helper install root (default `C:\dev\CodexElevatedHelper`). Those
 are intentionally left alone because they may be useful outside this kit. The scheduled
@@ -118,6 +124,8 @@ without repeated UAC prompts after the helper is installed.
   Setup, Doctor, and the install launcher look in the same place instead of assuming
   `C:\dev`.
 - `tests/` contains regression and capability checks.
+- `skills/capability-check/` is the shipped skill for testing your own access.
+- `templates/AGENTS-capability-section.md` is the rule the installer appends to `AGENTS.md`.
 
 ## Versioning
 

@@ -40,6 +40,8 @@ refresh, then restart Codex Desktop.
 - `config.autonomy.example.toml` - example Codex autonomy config for manual merge.
 - `elevated-dev-helper/` - reusable bounded elevated-helper pattern for Windows machines where Codex Desktop cannot launch its shell with an admin token.
 - `tests/` - capability harness, behavioral test plan, and hardcoded-path regression guard.
+- `skills/capability-check/` - shipped skill that makes an agent probe its own access instead of asserting limits it never tested.
+- `templates/AGENTS-capability-section.md` - the marker-delimited capability rule Setup appends to your global `AGENTS.md`.
 
 ## Intended Use
 

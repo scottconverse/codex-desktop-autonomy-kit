@@ -26,6 +26,8 @@ $ErrorActionPreference = "Stop"
 $kit = $PSScriptRoot
 $kitVersion = "1.5.0"
 $configMarker = "# Codex Desktop Autonomy Kit managed config"
+$agentsMarkerBegin = "<!-- Codex Desktop Autonomy Kit: capability-section begin -->"
+$agentsMarkerEnd = "<!-- Codex Desktop Autonomy Kit: capability-section end -->"
 
 function Step($m) { Write-Host "`n=== $m ===" -ForegroundColor Cyan }
 function Note($m) { Write-Host "  $m" }
@@ -48,6 +50,47 @@ function Backup-File($path) {
 function Get-FileHashText($path) {
     if (Test-Path -LiteralPath $path) { return (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash }
     return $null
+}
+function Install-AgentsCapabilityRule {
+    # Append the capability self-assessment rule to the global AGENTS.md.
+    # Discipline matches the config path: marker-delimited, append-if-absent,
+    # back up before changing, and never rewrite content the kit did not author.
+    param([string]$AgentsPath, [string]$TemplatePath)
+
+    if (-not (Test-Path -LiteralPath $TemplatePath)) {
+        Warn "capability rule template missing: $TemplatePath"
+        return
+    }
+    $section = (Get-Content -LiteralPath $TemplatePath -Raw).TrimEnd()
+
+    if (-not (Test-Path -LiteralPath $AgentsPath)) {
+        $dir = Split-Path -Parent $AgentsPath
+        if ($dir) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+        "$agentsMarkerBegin`r`n$section`r`n$agentsMarkerEnd" | Set-Content -LiteralPath $AgentsPath -Encoding UTF8
+        Note "created AGENTS.md with the capability rule"
+        return
+    }
+
+    $raw = Get-Content -LiteralPath $AgentsPath -Raw
+    if ($raw -match [regex]::Escape($agentsMarkerBegin)) {
+        $blockPattern = "(?s)" + [regex]::Escape($agentsMarkerBegin) + ".*?" + [regex]::Escape($agentsMarkerEnd)
+        $existing = [regex]::Match($raw, $blockPattern).Value
+        $desired = "$agentsMarkerBegin`r`n$section`r`n$agentsMarkerEnd"
+        if ((Normalize-ConfigText $existing) -eq (Normalize-ConfigText $desired)) {
+            Note "AGENTS.md capability rule already current"
+        } else {
+            Backup-File $AgentsPath
+            $updated = [regex]::Replace($raw, $blockPattern, [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $desired }, 1)
+            Set-Content -LiteralPath $AgentsPath -Value $updated -Encoding UTF8 -NoNewline
+            Note "refreshed AGENTS.md capability rule (kit-authored block only)"
+        }
+    } else {
+        Backup-File $AgentsPath
+        $sep = if ($raw.EndsWith("`n")) { "" } else { "`r`n" }
+        $updated = $raw + $sep + "`r`n" + "$agentsMarkerBegin`r`n$section`r`n$agentsMarkerEnd" + "`r`n"
+        Set-Content -LiteralPath $AgentsPath -Value $updated -Encoding UTF8 -NoNewline
+        Note "appended capability rule to existing AGENTS.md (your content preserved)"
+    }
 }
 function Resolve-HelperRoot {
     # Explicit pointer written by the elevated installer wins; else the documented default.
@@ -198,6 +241,16 @@ if (-not $SkipConfig) {
         })
     } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $profileDir "manifest.json") -Encoding UTF8
     Note "staged profiles under $profileDir"
+    Install-AgentsCapabilityRule -AgentsPath (Join-Path $cx "AGENTS.md") -TemplatePath (Join-Path $kit "templates\AGENTS-capability-section.md")
+    $skillSrc = Join-Path $kit "skills\capability-check"
+    if (Test-Path -LiteralPath $skillSrc) {
+        $skillDst = Join-Path $cx "skills\capability-check"
+        New-Item -ItemType Directory -Force -Path $skillDst | Out-Null
+        Copy-Item -LiteralPath (Join-Path $skillSrc "SKILL.md") -Destination $skillDst -Force
+        Note "installed capability-check skill under $skillDst"
+    } else {
+        Warn "capability-check skill not found in kit: $skillSrc"
+    }
 
     $config = Join-Path $cx "config.toml"
     $core = Get-Content -LiteralPath "$kit\CODEX-Desktop-Core.md" -Raw

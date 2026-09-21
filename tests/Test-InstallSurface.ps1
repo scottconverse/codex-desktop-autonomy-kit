@@ -240,6 +240,52 @@ try {
 } catch { Add-Result "license_present" "FAIL" $_.Exception.Message }
 
 try {
+    $tmpA = Join-Path $env:TEMP ("codex-kit-agents-" + [guid]::NewGuid().ToString("n"))
+    New-Item -ItemType Directory -Force -Path $tmpA | Out-Null
+    $ownerText = "# OWNER-RULES-KEEP-ME`r`n`r`n- do not delete this`r`n"
+    Set-Content -LiteralPath (Join-Path $tmpA "AGENTS.md") -Value $ownerText -Encoding UTF8 -NoNewline
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $kit 'Setup-Autonomy.ps1') -ConfigOnly -CodexRoot $tmpA *> $null
+    $agentsRaw = Get-Content -LiteralPath (Join-Path $tmpA "AGENTS.md") -Raw
+    $ownerOk = ($agentsRaw -match 'OWNER-RULES-KEEP-ME') -and ($agentsRaw -match 'do not delete this')
+    $ruleOk = ($agentsRaw -match 'Capability self-assessment')
+    $skillOk = (Test-Path -LiteralPath (Join-Path $tmpA "skills\\capability-check\\SKILL.md"))
+    $bakOk = (@(Get-ChildItem -LiteralPath $tmpA -Filter 'AGENTS.md.bak-*' -ErrorAction SilentlyContinue).Count -ge 1)
+    $hashBefore = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $tmpA "AGENTS.md")).Hash
+    $bakBefore = @(Get-ChildItem -LiteralPath $tmpA -Filter 'AGENTS.md.bak-*' -ErrorAction SilentlyContinue).Count
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $kit 'Setup-Autonomy.ps1') -ConfigOnly -CodexRoot $tmpA *> $null
+    $hashAfter = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $tmpA "AGENTS.md")).Hash
+    $bakAfter = @(Get-ChildItem -LiteralPath $tmpA -Filter 'AGENTS.md.bak-*' -ErrorAction SilentlyContinue).Count
+    $idem = ($hashBefore -eq $hashAfter) -and ($bakBefore -eq $bakAfter)
+    Remove-Item -LiteralPath $tmpA -Recurse -ErrorAction SilentlyContinue
+    $ok = $ownerOk -and $ruleOk -and $skillOk -and $bakOk -and $idem
+    Add-Result "agents_rule_install" $(if ($ok) { "PASS" } else { "FAIL" }) "owner preserved=$ownerOk; rule=$ruleOk; skill=$skillOk; backup=$bakOk; idempotent=$idem"
+} catch {
+    if ($tmpA -and (Test-Path -LiteralPath $tmpA)) { Remove-Item -LiteralPath $tmpA -Recurse -ErrorAction SilentlyContinue }
+    Add-Result "agents_rule_install" "FAIL" $_.Exception.Message
+}
+
+try {
+    $tmpB = Join-Path $env:TEMP ("codex-kit-agents-fresh-" + [guid]::NewGuid().ToString("n"))
+    New-Item -ItemType Directory -Force -Path $tmpB | Out-Null
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $kit 'Setup-Autonomy.ps1') -ConfigOnly -CodexRoot $tmpB *> $null
+    $freshRaw = Get-Content -LiteralPath (Join-Path $tmpB "AGENTS.md") -Raw -ErrorAction SilentlyContinue
+    $ok = ($freshRaw -match 'Capability self-assessment') -and ($freshRaw -match 'capability-section begin')
+    Remove-Item -LiteralPath $tmpB -Recurse -ErrorAction SilentlyContinue
+    Add-Result "agents_rule_fresh" $(if ($ok) { "PASS" } else { "FAIL" }) "fresh root gains AGENTS.md with a marker-delimited capability rule"
+} catch {
+    if ($tmpB -and (Test-Path -LiteralPath $tmpB)) { Remove-Item -LiteralPath $tmpB -Recurse -ErrorAction SilentlyContinue }
+    Add-Result "agents_rule_fresh" "FAIL" $_.Exception.Message
+}
+
+try {
+    $skillInRepo = Join-Path $kit 'skills\\capability-check\\SKILL.md'
+    $tmplInRepo = Join-Path $kit 'templates\\AGENTS-capability-section.md'
+    $coreRaw = Get-Content -LiteralPath (Join-Path $kit 'CODEX-Desktop-Core.md') -Raw
+    $ok = (Test-Path -LiteralPath $skillInRepo) -and (Test-Path -LiteralPath $tmplInRepo) -and ($coreRaw -match 'Capability self-assessment')
+    Add-Result "capability_piece_shipped" $(if ($ok) { "PASS" } else { "FAIL" }) "skill, AGENTS template, and core-profile section present in repo"
+} catch { Add-Result "capability_piece_shipped" "FAIL" $_.Exception.Message }
+
+try {
     $repoFiles = @('CODEX-Desktop-Core.md','GEN5-Codex-Desktop-Autonomous-Software-Development.md','config.autonomy.example.toml')
     $hashes = @($repoFiles | ForEach-Object { "$_=$(Hash (Join-Path $kit $_))" })
     Add-Result "profile_hashes" "INFO" ($hashes -join '; ')

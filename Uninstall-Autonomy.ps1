@@ -9,11 +9,12 @@
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
-    [switch]$RemoveHelper
+    [switch]$RemoveHelper,
+    [string]$CodexRoot = "$env:USERPROFILE\.codex"
 )
 
 $ErrorActionPreference = "Stop"
-$cx = "$env:USERPROFILE\.codex"
+$cx = $CodexRoot
 $configMarker = "# Codex Desktop Autonomy Kit managed config"
 
 function Restore-LatestBak($path) {
@@ -56,6 +57,37 @@ if (Test-Path -LiteralPath $config) {
         } else {
             Write-Host "custom config.toml found and no backup exists; left it in place"
         }
+    }
+}
+
+# Remove only the kit-authored capability block from AGENTS.md; keep owner content.
+$agents = Join-Path $cx "AGENTS.md"
+$agentsMarkerBegin = "<!-- Codex Desktop Autonomy Kit: capability-section begin -->"
+$agentsMarkerEnd = "<!-- Codex Desktop Autonomy Kit: capability-section end -->"
+if (Test-Path -LiteralPath $agents) {
+    $raw = Get-Content -LiteralPath $agents -Raw
+    if ($raw -match [regex]::Escape($agentsMarkerBegin)) {
+        if ($PSCmdlet.ShouldProcess($agents, "remove kit capability block")) {
+            $pattern = "(?s)\r?\n?" + [regex]::Escape($agentsMarkerBegin) + ".*?" + [regex]::Escape($agentsMarkerEnd) + "\r?\n?"
+            $cleaned = [regex]::Replace($raw, $pattern, "", 1)
+            if ([string]::IsNullOrWhiteSpace($cleaned)) {
+                [System.IO.File]::Delete($agents)
+                Write-Host "removed AGENTS.md (contained only the kit block)"
+            } else {
+                Set-Content -LiteralPath $agents -Value $cleaned -Encoding UTF8 -NoNewline
+                Write-Host "removed kit capability block from AGENTS.md (your content kept)"
+            }
+        }
+    } else {
+        Write-Host "AGENTS.md has no kit capability block - left unchanged"
+    }
+}
+
+$skillDir = Join-Path $cx "skills\capability-check"
+if (Test-Path -LiteralPath $skillDir) {
+    if ($PSCmdlet.ShouldProcess($skillDir, "remove capability-check skill")) {
+        [System.IO.Directory]::Delete($skillDir, $true)
+        Write-Host "removed $skillDir"
     }
 }
 

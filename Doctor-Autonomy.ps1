@@ -69,6 +69,20 @@ if (Test-Path $profileDir) {
     }
 }
 
+Section "Capability rule + skill"
+$agents = Join-Path $cx "AGENTS.md"
+$agentsMarker = "Codex Desktop Autonomy Kit: capability-section begin"
+$skillFile = Join-Path $cx "skills\capability-check\SKILL.md"
+if (Test-Path -LiteralPath $agents) {
+    $agentsRaw = Get-Content -LiteralPath $agents -Raw
+    $hasBlock = $agentsRaw -match [regex]::Escape($agentsMarker)
+    L "AGENTS.md" "present ($((Get-Item $agents).Length) bytes)"
+    L "  kit capability rule" $(if ($hasBlock) { 'yes' } else { 'no - run Setup-Autonomy.ps1 to add it' })
+} else {
+    L "AGENTS.md" '(missing - run Setup-Autonomy.ps1 to create it)'
+}
+L "capability-check skill" $(if (Test-Path -LiteralPath $skillFile) { $skillFile } else { '(missing)' })
+
 Section "Elevated dev helper"
 $h = Get-ScheduledTask -TaskName "CodexElevatedDevHelper" -ErrorAction SilentlyContinue
 $helperRoot = 'C:\dev\CodexElevatedHelper'
