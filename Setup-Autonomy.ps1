@@ -24,8 +24,10 @@ param(
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $kit = $PSScriptRoot
-$kitVersion = "1.5.0"
+$kitVersion = "1.6.0"
 $configMarker = "# Codex Desktop Autonomy Kit managed config"
+$agentsMarkerBegin = "<!-- Codex Desktop Autonomy Kit: capability-section begin -->"
+$agentsMarkerEnd = "<!-- Codex Desktop Autonomy Kit: capability-section end -->"
 
 function Step($m) { Write-Host "`n=== $m ===" -ForegroundColor Cyan }
 function Note($m) { Write-Host "  $m" }
@@ -48,6 +50,59 @@ function Backup-File($path) {
 function Get-FileHashText($path) {
     if (Test-Path -LiteralPath $path) { return (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash }
     return $null
+}
+function Install-AgentsCapabilityRule {
+    # Append the capability self-assessment rule to the global AGENTS.md.
+    # Discipline matches the config path: marker-delimited, append-if-absent,
+    # back up before changing, and never rewrite content the kit did not author.
+    param([string]$AgentsPath, [string]$TemplatePath)
+
+    if (-not (Test-Path -LiteralPath $TemplatePath)) {
+        Warn "capability rule template missing: $TemplatePath"
+        return
+    }
+    $section = (Get-Content -LiteralPath $TemplatePath -Raw).TrimEnd()
+
+    if (-not (Test-Path -LiteralPath $AgentsPath)) {
+        $dir = Split-Path -Parent $AgentsPath
+        if ($dir) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+        "$agentsMarkerBegin`r`n$section`r`n$agentsMarkerEnd" | Set-Content -LiteralPath $AgentsPath -Encoding UTF8
+        Note "created AGENTS.md with the capability rule"
+        return
+    }
+
+    $raw = Get-Content -LiteralPath $AgentsPath -Raw
+    if ($raw -match [regex]::Escape($agentsMarkerBegin)) {
+        $blockPattern = "(?s)" + [regex]::Escape($agentsMarkerBegin) + ".*?" + [regex]::Escape($agentsMarkerEnd)
+        $existing = [regex]::Match($raw, $blockPattern).Value
+        $desired = "$agentsMarkerBegin`r`n$section`r`n$agentsMarkerEnd"
+        if ((Normalize-ConfigText $existing) -eq (Normalize-ConfigText $desired)) {
+            Note "AGENTS.md capability rule already current"
+        } else {
+            Backup-File $AgentsPath
+            $updated = [regex]::Replace($raw, $blockPattern, [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $desired }, 1)
+            Set-Content -LiteralPath $AgentsPath -Value $updated -Encoding UTF8 -NoNewline
+            Note "refreshed AGENTS.md capability rule (kit-authored block only)"
+        }
+    } else {
+        Backup-File $AgentsPath
+        $sep = if ($raw.EndsWith("`n")) { "" } else { "`r`n" }
+        $updated = $raw + $sep + "`r`n" + "$agentsMarkerBegin`r`n$section`r`n$agentsMarkerEnd" + "`r`n"
+        Set-Content -LiteralPath $AgentsPath -Value $updated -Encoding UTF8 -NoNewline
+        Note "appended capability rule to existing AGENTS.md (your content preserved)"
+    }
+}
+function Resolve-HelperRoot {
+    # Explicit pointer written by the elevated installer wins; else the documented default.
+    # Without this, a custom -InstallRoot produced a permanent false STALE/modified result.
+    $pointer = Join-Path (Join-Path $CodexRoot "autonomy-kit") "helper-root.json"
+    if (Test-Path -LiteralPath $pointer) {
+        try {
+            $p = Get-Content -LiteralPath $pointer -Raw | ConvertFrom-Json
+            if ($p.install_root) { return $p.install_root }
+        } catch { }
+    }
+    return "C:\dev\CodexElevatedHelper"
 }
 function Get-GeneratedConfig($coreText) {
     return @"
@@ -82,8 +137,12 @@ if (-not $ConfigOnly) {
         if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
             Warn "winget not found; install Python manually or install App Installer, then re-run."
         } else {
-            winget install -e --id Python.Python.3.12 --scope user `
-                --accept-package-agreements --accept-source-agreements --disable-interactivity
+            try {
+                winget install -e --id Python.Python.3.12 --scope user `
+                    --accept-package-agreements --accept-source-agreements --disable-interactivity
+            } catch {
+                Warn "Python install failed: $($_.Exception.Message)"
+            }
             $pyExe = Get-ChildItem "$env:LOCALAPPDATA\Programs\Python\Python3*\python.exe" -ErrorAction SilentlyContinue |
                 Sort-Object FullName -Descending | Select-Object -First 1
         }
@@ -101,7 +160,11 @@ if (-not $ConfigOnly) {
 
     Step "uv"
     if (-not (Test-Path "$env:USERPROFILE\.local\bin\uv.exe")) {
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
+        try {
+            powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
+        } catch {
+            Warn "uv install failed: $($_.Exception.Message)"
+        }
     }
     Prepend-UserPath "$env:USERPROFILE\.local\bin"
     if (Test-Path "$env:USERPROFILE\.local\bin\uv.exe") {
@@ -110,11 +173,19 @@ if (-not $ConfigOnly) {
 
     Step "scoop"
     if (-not (Test-Path "$env:USERPROFILE\scoop\shims\scoop.ps1")) {
-        Invoke-Expression (Invoke-RestMethod -Uri "https://get.scoop.sh")
+        try {
+            Invoke-Expression (Invoke-RestMethod -Uri "https://get.scoop.sh")
+        } catch {
+            Warn "scoop install failed: $($_.Exception.Message)"
+        }
     }
     Prepend-UserPath "$env:USERPROFILE\scoop\shims"
     $scoop = "$env:USERPROFILE\scoop\shims\scoop.ps1"
-    & $scoop bucket add main *> $null
+    if (Test-Path -LiteralPath $scoop) {
+        try { & $scoop bucket add main *> $null } catch { Warn "scoop bucket add failed: $($_.Exception.Message)" }
+    } else {
+        Warn "scoop unavailable; skipping tool installs that require it."
+    }
 
     Step "core tools via scoop"
     $wanted = [ordered]@{ 'nodejs-lts' = 'node'; 'gh' = 'gh'; 'ripgrep' = 'rg'; 'jq' = 'jq'; 'sqlite' = 'sqlite3' }
@@ -123,7 +194,11 @@ if (-not $ConfigOnly) {
         if (Get-Command $cmd -ErrorAction SilentlyContinue) {
             Note "$cmd already present - skip"
         } else {
-            & $scoop install $pkg
+            try {
+                & $scoop install $pkg
+            } catch {
+                Warn "scoop install $pkg failed: $($_.Exception.Message)"
+            }
         }
     }
 
@@ -131,9 +206,13 @@ if (-not $ConfigOnly) {
     $py3cmd = (Get-Command python3 -ErrorAction SilentlyContinue).Source
     if (-not $py3cmd -and $pyExe) { $py3cmd = Join-Path $pyExe.Directory.FullName "python3.exe" }
     if ($py3cmd) {
-        & $py3cmd -m pip install --quiet --upgrade playwright
-        if (-not $SkipBrowsers) { & $py3cmd -m playwright install }
-        Note "playwright: $(& $py3cmd -m playwright --version 2>&1)"
+        try {
+            & $py3cmd -m pip install --quiet --upgrade playwright
+            if (-not $SkipBrowsers) { & $py3cmd -m playwright install }
+            Note "playwright: $(& $py3cmd -m playwright --version 2>&1)"
+        } catch {
+            Warn "Playwright install failed: $($_.Exception.Message)"
+        }
     } else {
         Warn "python3 not found; skipped Playwright install."
     }
@@ -162,6 +241,16 @@ if (-not $SkipConfig) {
         })
     } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $profileDir "manifest.json") -Encoding UTF8
     Note "staged profiles under $profileDir"
+    Install-AgentsCapabilityRule -AgentsPath (Join-Path $cx "AGENTS.md") -TemplatePath (Join-Path $kit "templates\AGENTS-capability-section.md")
+    $skillSrc = Join-Path $kit "skills\capability-check"
+    if (Test-Path -LiteralPath $skillSrc) {
+        $skillDst = Join-Path $cx "skills\capability-check"
+        New-Item -ItemType Directory -Force -Path $skillDst | Out-Null
+        Copy-Item -LiteralPath (Join-Path $skillSrc "SKILL.md") -Destination $skillDst -Force
+        Note "installed capability-check skill under $skillDst"
+    } else {
+        Warn "capability-check skill not found in kit: $skillSrc"
+    }
 
     $config = Join-Path $cx "config.toml"
     $core = Get-Content -LiteralPath "$kit\CODEX-Desktop-Core.md" -Raw
@@ -192,7 +281,8 @@ if (-not $SkipHelper -and -not $ConfigOnly) {
     Step "elevated dev helper"
     $helperTask = Get-ScheduledTask -TaskName "CodexElevatedDevHelper" -ErrorAction SilentlyContinue
     $helperInstall = Join-Path $kit "elevated-dev-helper\Install-ElevatedDevHelper-AsAdmin.cmd"
-    $installedHelper = "C:\dev\CodexElevatedHelper\ElevatedDevHelper.ps1"
+    $helperRoot = Resolve-HelperRoot
+    $installedHelper = Join-Path $helperRoot "ElevatedDevHelper.ps1"
     if ($helperTask) {
         Note "CodexElevatedDevHelper already installed ($($helperTask.State))"
         $repoHash = Get-FileHashText (Join-Path $kit "elevated-dev-helper\ElevatedDevHelper.ps1")

@@ -1,6 +1,6 @@
 # Codex Desktop Autonomy Kit User Manual
 
-Version 1.5.0 for Windows.
+Version 1.6.0 for Windows.
 
 ![Codex Desktop Autonomy Kit architecture](assets/codex-autonomy-architecture.svg)
 
@@ -24,6 +24,42 @@ install, check, refresh, test, or uninstall the kit.
 - User-scope development tools when missing: Python, uv, Node.js, GitHub CLI, ripgrep, jq,
   SQLite, and Playwright.
 - Optional elevated helper under `C:\dev\CodexElevatedHelper` after you approve Windows UAC.
+- A capability self-assessment rule appended to `~/.codex/AGENTS.md` inside marker comments,
+  so every session is told to probe its access rather than assert untested limits.
+- The `capability-check` skill under `~/.codex/skills/capability-check/`.
+
+## Capability Self-Assessment
+
+The kit installs a rule and a skill whose whole job is to stop the agent inventing a limit
+it never tested.
+
+Why it matters: an agent that believes it cannot write outside its workspace will ask for
+permission it does not need, or hand back a blocker that is not real. That costs more time
+than almost any other failure mode. Telling the agent "you have access" does not reliably
+fix it -- a model can rationalize past an instruction. A probe does fix it, because a probe
+produces evidence.
+
+What lands on your machine:
+
+- `~/.codex/skills/capability-check/SKILL.md` -- the probe protocol and reporting format.
+- A rule appended to `~/.codex/AGENTS.md`, inside begin/end marker comments. It is added
+  only when absent, a backup is taken first, and any content you wrote there is never
+  rewritten. Re-running setup when the block is already current changes nothing.
+- A matching section in `CODEX-Desktop-Core.md`, so the rule travels with the profile.
+
+The rule separates three cases, which is the part that makes it useful:
+
+| Case | What it looks like | Correct response |
+|------|--------------------|------------------|
+| Policy veto | `rejected: blocked by policy`, before the shell runs | Spelling problem. Reformat and retry, e.g. `cmd /c rd /s /q` instead of `Remove-Item -Recurse -Force`. |
+| Real limit | ACL denial, UAC declined, file lock, missing tool | Genuine. Name the exact error and continue everything else. |
+| Imagined limit | Assumed sandbox, workspace-only scope, permission never checked | The common case. Test it instead of asserting it. |
+
+To invoke it deliberately, say **"capability check"**, or use the **`$capability-check`**
+skill. Doctor reports whether the rule and skill are present.
+
+Uninstall removes only the kit-authored block from `AGENTS.md`, keeping your own text, and
+removes the installed skill.
 
 ## Click-First Controls
 
@@ -33,7 +69,8 @@ install, check, refresh, test, or uninstall the kit.
 - `Refresh-ElevatedHelper.cmd` refreshes the elevated helper and asks for UAC approval.
 - `Run-Tests.cmd` runs the shipped test suite.
 - `Uninstall-Autonomy.cmd` turns the kit off by restoring/removing the Codex config layer
-  and staged profiles. It leaves general tools and helper files in place.
+  and staged profiles. It asks separately whether to unregister the elevated helper task.
+  It always leaves general tools and helper files in place.
 
 ## Install
 
@@ -59,6 +96,7 @@ Doctor reports:
 - elevated helper task state,
 - helper queue/result/log directory availability,
 - installed helper script parity against the repo copy.
+- whether the `AGENTS.md` capability rule and the `capability-check` skill are installed.
 
 ## Update
 
@@ -76,9 +114,13 @@ This turns the kit off for Codex Desktop by restoring the newest `config.toml.ba
 when one exists, or by removing a clearly kit-managed config when no backup exists. It also
 removes staged files from `~/.codex/autonomy-kit`.
 
+It removes only the kit-authored block from `AGENTS.md`, keeping any content you wrote there,
+and removes the installed `capability-check` skill.
+
 It does not remove Python, Node.js, GitHub CLI, ripgrep, jq, SQLite, Playwright, or the
-helper files under `C:\dev`. Those are intentionally left alone because they may be useful
-outside this kit.
+helper files under the helper install root (default `C:\dev\CodexElevatedHelper`). Those
+are intentionally left alone because they may be useful outside this kit. The scheduled
+task is removed only if you answer yes to the separate prompt.
 
 ## Elevated Helper
 
@@ -112,11 +154,16 @@ without repeated UAC prompts after the helper is installed.
 - `Doctor-Autonomy.ps1` does the read-only status work behind `Doctor-Autonomy.cmd`.
 - `Uninstall-Autonomy.ps1` does the scoped uninstall work behind `Uninstall-Autonomy.cmd`.
 - `elevated-dev-helper/` contains the optional scheduled-task helper.
+- `~/.codex/autonomy-kit/helper-root.json` records where the helper was installed, so
+  Setup, Doctor, and the install launcher look in the same place instead of assuming
+  `C:\dev`.
 - `tests/` contains regression and capability checks.
+- `skills/capability-check/` is the shipped skill for testing your own access.
+- `templates/AGENTS-capability-section.md` is the rule the installer appends to `AGENTS.md`.
 
 ## Versioning
 
-The current public release is v1.5.0. Setup writes the same version into the staged manifest
+The current public release is v1.6.0. Setup writes the same version into the staged manifest
 at `~/.codex/autonomy-kit/manifest.json`.
 
 ## Safety Notes

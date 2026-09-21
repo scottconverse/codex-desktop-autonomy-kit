@@ -2,6 +2,38 @@
 
 All notable changes to the Codex Desktop Autonomy Kit. Dates are UTC.
 
+Verification note: this repository has no CI workflow. Test and smoke-check results
+recorded in release notes are produced by running the shipped scripts manually, not by
+an automated service.
+
+## v1.6.0 - 2026-09-21
+
+### Added
+- `capability-check` skill: forces an empirical probe of the agent's own access instead of
+  asserting limits it never tested. Ships in `skills/capability-check/` and installs to
+  `~/.codex/skills/capability-check/`.
+- Capability self-assessment section in `CODEX-Desktop-Core.md`, so the rule travels with
+  the profile.
+- `templates/AGENTS-capability-section.md` and a guarded `AGENTS.md` writer in
+  `Setup-Autonomy.ps1`. The rule is appended inside begin/end markers, only if absent,
+  with a backup taken first. Owner-written content is never rewritten.
+- Doctor now reports whether the AGENTS.md rule and the skill are installed.
+- Uninstall removes only the kit-authored AGENTS.md block, keeping owner content, and
+  removes the installed skill.
+
+### Changed
+- Helper root is resolved from `~/.codex/autonomy-kit/helper-root.json` rather than
+  assuming `C:\dev`. Default behavior is unchanged; this fixes a latent mismatch when a
+  custom `-InstallRoot` is used.
+- Install steps warn and continue instead of aborting before config staging.
+
+### Fixed
+- Added root MIT `LICENSE` (previously absent).
+
+### Notes
+- Repository has no CI workflow; test and smoke-check results are produced by running the
+  shipped scripts manually.
+
 ## v1.5.0 - 2026-06-28
 
 ### Added

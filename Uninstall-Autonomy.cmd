@@ -8,7 +8,15 @@ echo.
 choice /C YN /N /M "Continue? [Y/N] "
 if errorlevel 2 exit /b 1
 echo.
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Uninstall-Autonomy.ps1"
+set "helper_arg="
+choice /C YN /N /M "Also unregister the elevated helper task? [Y/N] "
+if not errorlevel 2 set "helper_arg=-RemoveHelper"
+echo.
+if defined helper_arg (
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Uninstall-Autonomy.ps1" -RemoveHelper
+) else (
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Uninstall-Autonomy.ps1"
+)
 set "code=%ERRORLEVEL%"
 echo.
 if "%code%"=="0" (

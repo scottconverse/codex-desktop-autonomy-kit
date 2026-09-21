@@ -1,0 +1,31 @@
+# Line endings, pinned.
+#
+# Every tracked text file in this repo is CRLF, including the shipped PowerShell, batch,
+# markdown, and skill files. That is deliberate: the kit installs these files onto Windows
+# machines and compares some of them by SHA-256, so the bytes on disk must match the bytes
+# in the repo. Without this file, a contributor whose Git has core.autocrlf configured
+# differently could commit LF versions, and a fresh clone would then install files that
+# differ from the ones that were tested.
+#
+# text=auto is intentionally NOT used: it would let Git normalize on checkout and
+# reintroduce exactly the drift this file exists to prevent.
+#
+# Binary assets are listed explicitly so they are never converted.
+
+*.svg binary
+*.png binary
+*.ico binary
+*.zip binary
+*.exe binary
+
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.psm1 text eol=crlf
+*.toml text eol=crlf
+*.md text eol=crlf
+*.html text eol=crlf
+*.json text eol=crlf
+*.txt text eol=crlf
+*.gitignore text eol=crlf
+.gitattributes text eol=crlf

@@ -86,6 +86,18 @@ if ($selfTest.status -ne "ok" -or -not $selfTest.result.ok -or -not $selfTest.re
 
 "[$((Get-Date).ToUniversalTime().ToString("o"))] Self-test succeeded: $resultPath" | Add-Content -LiteralPath $installLog -Encoding UTF8
 
+# Record the install root so the rest of the kit can discover it. Consumers
+# (Setup, Doctor, Install-Autonomy.cmd) must not assume C:\dev.
+$pointerDir = Join-Path $env:USERPROFILE ".codex\autonomy-kit"
+New-Item -ItemType Directory -Force -Path $pointerDir | Out-Null
+@{
+    install_root = $InstallRoot
+    task_name = $TaskName
+    helper_script = $target
+    user_id = $userId
+    updated_at = (Get-Date).ToUniversalTime().ToString("o")
+} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $pointerDir "helper-root.json") -Encoding UTF8
+
 Write-Host "Installed $TaskName at $InstallRoot for $userId"
 Write-Host "Install log: $installLog"
 if (Test-Path -LiteralPath $resultPath) {

@@ -1,6 +1,6 @@
 # Codex Desktop Autonomy Kit
 
-**Version 1.5.0 - Windows** - a click-first setup kit for configuring Codex Desktop toward
+**Version 1.6.0 - Windows** - a click-first setup kit for configuring Codex Desktop toward
 maximum practical software-development autonomy on Windows development machines. See
 [CHANGELOG.md](CHANGELOG.md).
 
@@ -14,6 +14,11 @@ Codex Desktop Autonomy Kit turns a Windows Codex Desktop install into a more cap
 development collaborator. It stages persistent Codex instructions, configures the Codex
 sandbox for full local development access, installs common user-scope tooling, and optionally
 installs a bounded elevated helper for development tasks that need administrator rights.
+
+It also installs a capability self-assessment rule and skill. The most common failure of an
+autonomous coding agent is not a missing permission -- it is inventing one, then stopping to
+ask for access it already has. The kit gives the agent a probe protocol and a standing rule:
+test the limit before asserting it, name real blockers precisely, and keep working.
 
 The kit is designed around a no-CLI normal path: clone or download the repo, double-click
 `Install-Autonomy.cmd`, approve Windows UAC only when the elevated helper needs setup or
@@ -30,7 +35,8 @@ refresh, then restart Codex Desktop.
 - `Doctor-Autonomy.cmd` - double-click doctor/status wrapper.
 - `Uninstall-Autonomy.ps1` - reverses the config layer and optionally unregisters the
   elevated helper. Leaves the general-purpose toolchain alone.
-- `Uninstall-Autonomy.cmd` - double-click uninstall wrapper.
+- `Uninstall-Autonomy.cmd` - double-click uninstall wrapper. Prompts separately before
+  unregistering the elevated helper task.
 - `Refresh-ElevatedHelper.cmd` - double-click elevated-helper refresh wrapper.
 - `Run-Tests.cmd` - double-click test runner wrapper.
 - `CODEX-Desktop-Core.md` - compact standing instructions for everyday speed.
@@ -39,6 +45,28 @@ refresh, then restart Codex Desktop.
 - `config.autonomy.example.toml` - example Codex autonomy config for manual merge.
 - `elevated-dev-helper/` - reusable bounded elevated-helper pattern for Windows machines where Codex Desktop cannot launch its shell with an admin token.
 - `tests/` - capability harness, behavioral test plan, and hardcoded-path regression guard.
+- `skills/capability-check/` - shipped skill that makes an agent probe its own access instead of asserting limits it never tested.
+- `templates/AGENTS-capability-section.md` - the marker-delimited capability rule Setup appends to your global `AGENTS.md`.
+
+## Capability Self-Assessment
+
+An agent that believes it cannot write outside its workspace will ask for permission it does
+not need, or hand back a blocker that is not real. That costs more time than almost any other
+failure mode, and prose alone does not fix it -- a model can rationalize past an instruction.
+
+The kit fixes it with evidence instead:
+
+- **A probe protocol.** The `capability-check` skill tells the agent to actually run
+  `Test-Path`, attempt a real write, try the command -- rather than reasoning about what a
+  sandbox probably allows. Three seconds of testing replaces an argument.
+- **Failure-mode separation.** A policy veto (`rejected: blocked by policy`) is a spelling
+  problem: reformat and retry. A real limit (ACL, UAC declined, file lock, missing tool) gets
+  named precisely. An imagined limit is the common case, and gets tested away.
+- **A standing rule in `AGENTS.md`.** The installer appends it inside begin/end markers, only
+  if absent, backing up first. Content you wrote there is never rewritten.
+- **A section in `CODEX-Desktop-Core.md`**, so the rule travels wherever the profile is used.
+
+Trigger it explicitly with the phrase "capability check" or the `$capability-check` skill.
 
 ## Intended Use
 
@@ -64,7 +92,12 @@ leaves it unchanged and stages the kit files under `~/.codex/autonomy-kit` for m
 Backups are created only before setup overwrites a kit-managed or forced config. This avoids
 breaking Codex with duplicate TOML keys.
 
-Status check: double-click `Doctor-Autonomy.cmd`.
+Besides config, setup stages the instruction profiles under `~/.codex/autonomy-kit`, installs
+the `capability-check` skill, and appends the capability rule to `~/.codex/AGENTS.md` (keeping
+any content you already had there).
+
+Status check: double-click `Doctor-Autonomy.cmd`. Doctor also reports whether the capability
+rule and skill are installed.
 
 If the elevated helper is stale, the installer offers to refresh it in the same flow. Approve
 the Windows administrator prompt when you choose yes. The elevated installer window closes

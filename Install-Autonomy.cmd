@@ -27,7 +27,7 @@ if not "%code%"=="0" (
   exit /b %code%
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$repo='%~dp0elevated-dev-helper\ElevatedDevHelper.ps1'; $installed='C:\dev\CodexElevatedHelper\ElevatedDevHelper.ps1'; if ((Test-Path $repo) -and (Test-Path $installed) -and ((Get-FileHash -Algorithm SHA256 -LiteralPath $repo).Hash -ne (Get-FileHash -Algorithm SHA256 -LiteralPath $installed).Hash)) { exit 2 } else { exit 0 }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$repo='%~dp0elevated-dev-helper\ElevatedDevHelper.ps1'; $root='C:\dev\CodexElevatedHelper'; $ptr=Join-Path $env:USERPROFILE '.codex\autonomy-kit\helper-root.json'; if (Test-Path $ptr) { try { $r=(Get-Content -LiteralPath $ptr -Raw | ConvertFrom-Json).install_root; if ($r) { $root=$r } } catch {} }; $installed=Join-Path $root 'ElevatedDevHelper.ps1'; if ((Test-Path $repo) -and (Test-Path $installed) -and ((Get-FileHash -Algorithm SHA256 -LiteralPath $repo).Hash -ne (Get-FileHash -Algorithm SHA256 -LiteralPath $installed).Hash)) { exit 2 } else { exit 0 }"
 set "helper_stale=%ERRORLEVEL%"
 if "%helper_stale%"=="2" (
   echo.

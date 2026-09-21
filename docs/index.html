@@ -99,7 +99,7 @@
     }
     .grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
       gap: 16px;
     }
     .card {
@@ -178,9 +178,9 @@
 <body>
   <header class="hero">
     <div class="hero-inner">
-      <span class="release">Version 1.5.0 for Windows</span>
+      <span class="release">Version 1.6.0 for Windows</span>
       <h1>Codex Desktop Autonomy Kit</h1>
-      <p class="lead">A click-first setup kit that configures Codex Desktop for practical local software-development autonomy: persistent instructions, full local development access, toolchain bootstrap, diagnostics, and a bounded elevated helper.</p>
+      <p class="lead">A click-first setup kit that configures Codex Desktop for practical local software-development autonomy: persistent instructions, full local development access, toolchain bootstrap, diagnostics, a bounded elevated helper, and a capability self-assessment rule that stops an agent inventing limits it never tested.</p>
       <div class="actions">
         <a class="button" href="https://github.com/scottconverse/codex-desktop-autonomy-kit">View on GitHub</a>
         <a class="button secondary" href="USER-MANUAL.md">Read the manual</a>
@@ -204,6 +204,10 @@
           <h3>Handles elevation</h3>
           <p>Optionally installs a scheduled-task helper so approved development infrastructure actions can run with administrator rights.</p>
         </article>
+        <article class="card">
+          <h3>Tests its own access</h3>
+          <p>Installs a <code>capability-check</code> skill and a standing rule that make the agent probe what it can actually do instead of stopping to ask for permissions it already has.</p>
+        </article>
       </div>
     </section>
 
@@ -212,7 +216,7 @@
       <div class="steps">
         <div class="step"><div><strong>Install or update.</strong><br>Double-click <code>Install-Autonomy.cmd</code>. The installer runs setup, Doctor, and helper refresh checks.</div></div>
         <div class="step"><div><strong>Approve UAC only when needed.</strong><br>The helper path asks for Windows administrator approval during initial setup or refresh.</div></div>
-        <div class="step"><div><strong>Restart Codex Desktop.</strong><br>After restart, the kit is active through Codex Desktop configuration. There is no special invocation phrase.</div></div>
+        <div class="step"><div><strong>Restart Codex Desktop.</strong><br>Setup also stages the instruction profiles, installs the <code>capability-check</code> skill, and adds the capability rule to <code>AGENTS.md</code>. After restart, the kit is active through Codex Desktop configuration.</div></div>
         <div class="step"><div><strong>Maintain by double-clicking.</strong><br>Use Doctor, Refresh Helper, Run Tests, or Uninstall from the root launcher files.</div></div>
       </div>
     </section>
@@ -220,6 +224,25 @@
     <section>
       <h2>Architecture</h2>
       <img class="architecture" src="assets/codex-autonomy-architecture.svg" alt="Codex Desktop Autonomy Kit architecture diagram">
+    </section>
+
+    <section>
+      <h2>Stops the imagined blocker</h2>
+      <p>The most expensive failure of an autonomous coding agent is not a missing permission. It is inventing one, then halting to ask for access it already has. Prose does not fix this &mdash; a model can rationalize past an instruction.</p>
+      <div class="grid">
+        <article class="card">
+          <h3>Probe, don't assume</h3>
+          <p>The <code>capability-check</code> skill has the agent run real checks &mdash; test the path, attempt the write, try the command &mdash; rather than reasoning about what a sandbox probably allows.</p>
+        </article>
+        <article class="card">
+          <h3>Separate real limits</h3>
+          <p>A policy veto is a spelling problem: reformat and retry. A real limit &mdash; ACL, UAC, file lock, missing tool &mdash; gets named precisely. An imagined limit gets tested away.</p>
+        </article>
+        <article class="card">
+          <h3>Standing rule</h3>
+          <p>The installer appends the rule to <code>AGENTS.md</code> inside markers, only if absent, backing up first. Content you wrote there is never rewritten.</p>
+        </article>
+      </div>
     </section>
 
     <section>
@@ -248,7 +271,7 @@
     </section>
 
     <footer>
-      <p>Codex Desktop Autonomy Kit v1.5.0. Review scripts before installing on any machine you care about. Higher-priority Codex, project, OS, legal, and safety rules still apply.</p>
+      <p>Codex Desktop Autonomy Kit v1.6.0. Review scripts before installing on any machine you care about. Higher-priority Codex, project, OS, legal, and safety rules still apply.</p>
     </footer>
   </main>
 </body>
