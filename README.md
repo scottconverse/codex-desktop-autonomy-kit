@@ -30,7 +30,8 @@ refresh, then restart Codex Desktop.
 - `Doctor-Autonomy.cmd` - double-click doctor/status wrapper.
 - `Uninstall-Autonomy.ps1` - reverses the config layer and optionally unregisters the
   elevated helper. Leaves the general-purpose toolchain alone.
-- `Uninstall-Autonomy.cmd` - double-click uninstall wrapper.
+- `Uninstall-Autonomy.cmd` - double-click uninstall wrapper. Prompts separately before
+  unregistering the elevated helper task.
 - `Refresh-ElevatedHelper.cmd` - double-click elevated-helper refresh wrapper.
 - `Run-Tests.cmd` - double-click test runner wrapper.
 - `CODEX-Desktop-Core.md` - compact standing instructions for everyday speed.

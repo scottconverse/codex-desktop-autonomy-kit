@@ -33,7 +33,8 @@ install, check, refresh, test, or uninstall the kit.
 - `Refresh-ElevatedHelper.cmd` refreshes the elevated helper and asks for UAC approval.
 - `Run-Tests.cmd` runs the shipped test suite.
 - `Uninstall-Autonomy.cmd` turns the kit off by restoring/removing the Codex config layer
-  and staged profiles. It leaves general tools and helper files in place.
+  and staged profiles. It asks separately whether to unregister the elevated helper task.
+  It always leaves general tools and helper files in place.
 
 ## Install
 
@@ -77,8 +78,9 @@ when one exists, or by removing a clearly kit-managed config when no backup exis
 removes staged files from `~/.codex/autonomy-kit`.
 
 It does not remove Python, Node.js, GitHub CLI, ripgrep, jq, SQLite, Playwright, or the
-helper files under `C:\dev`. Those are intentionally left alone because they may be useful
-outside this kit.
+helper files under the helper install root (default `C:\dev\CodexElevatedHelper`). Those
+are intentionally left alone because they may be useful outside this kit. The scheduled
+task is removed only if you answer yes to the separate prompt.
 
 ## Elevated Helper
 
@@ -112,6 +114,9 @@ without repeated UAC prompts after the helper is installed.
 - `Doctor-Autonomy.ps1` does the read-only status work behind `Doctor-Autonomy.cmd`.
 - `Uninstall-Autonomy.ps1` does the scoped uninstall work behind `Uninstall-Autonomy.cmd`.
 - `elevated-dev-helper/` contains the optional scheduled-task helper.
+- `~/.codex/autonomy-kit/helper-root.json` records where the helper was installed, so
+  Setup, Doctor, and the install launcher look in the same place instead of assuming
+  `C:\dev`.
 - `tests/` contains regression and capability checks.
 
 ## Versioning

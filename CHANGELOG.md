@@ -2,6 +2,10 @@
 
 All notable changes to the Codex Desktop Autonomy Kit. Dates are UTC.
 
+Verification note: this repository has no CI workflow. Test and smoke-check results
+recorded in release notes are produced by running the shipped scripts manually, not by
+an automated service.
+
 ## v1.5.0 - 2026-06-28
 
 ### Added

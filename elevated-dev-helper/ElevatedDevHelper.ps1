@@ -1,5 +1,5 @@
 param(
-    [string]$Root = "C:\dev\CodexElevatedHelper"
+    [string]$Root
 )
 
 $ErrorActionPreference = "Stop"
@@ -30,7 +30,19 @@ function Assert-Admin {
 
 function Assert-TrustedPath {
     param([string]$Path)
+    # Canonicalize first: resolve symlinks/junctions so a link that lives under an
+    # allowed root but points outside it cannot pass a string-prefix check. This
+    # hardening was not exercised against a live symlink; it is defensive.
     $resolved = [System.IO.Path]::GetFullPath($Path)
+    if (Test-Path -LiteralPath $resolved) {
+        try {
+            $item = Get-Item -LiteralPath $resolved -Force
+            if ($item.LinkType) {
+                $target = @($item.Target)[0]
+                if ($target) { $resolved = [System.IO.Path]::GetFullPath($target) }
+            }
+        } catch { }
+    }
     # Resolve the running user's actual profile instead of assuming C:\Users\<name>.
     # C:\dev is the helper's own development root.
     $trustedRoots = @(
@@ -86,6 +98,21 @@ function Invoke-LoggedProcess {
         stdout = $(if ($outTask.IsCompleted) { $outTask.Result } else { "" })
         stderr = $(if ($errTask.IsCompleted) { $errTask.Result } else { "" })
     }
+}
+
+function Resolve-HelperRoot {
+    # Single source of truth: an explicit -Root wins, else the pointer written at
+    # install time, else the documented default.
+    param([string]$Explicit)
+    if ($Explicit -and (Test-Path -LiteralPath $Explicit)) { return $Explicit }
+    $pointer = Join-Path $env:USERPROFILE ".codex\autonomy-kit\helper-root.json"
+    if (Test-Path -LiteralPath $pointer) {
+        try {
+            $p = Get-Content -LiteralPath $pointer -Raw | ConvertFrom-Json
+            if ($p.install_root -and (Test-Path -LiteralPath $p.install_root)) { return $p.install_root }
+        } catch { }
+    }
+    return "C:\dev\CodexElevatedHelper"
 }
 
 function Resolve-Winget {
@@ -179,7 +206,13 @@ function Invoke-HelperAction {
             if ($taskName -notmatch "^[A-Za-z0-9._ -]{1,80}$") { throw "Invalid taskName." }
             $script = Assert-TrustedPath -Path ([string]$Job.scriptPath)
             $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$script`""
-            $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -RunLevel Highest
+            # Use the resolved identity (DOMAIN\user or UPN) for explicitness. Note:
+            # the bare $env:USERNAME form was live-tested on a domain-joined machine and
+            # did resolve and run correctly, so this is a clarity choice, not a fix for
+            # an observed defect. The resolved form is safer on renamed or ambiguous
+            # accounts where the bare name could be unresolved.
+            $taskUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+            $principal = New-ScheduledTaskPrincipal -UserId $taskUser -RunLevel Highest
             Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Force | Out-Null
             return @{ ok = $true; task = $taskName; script = $script }
         }
@@ -191,6 +224,7 @@ function Invoke-HelperAction {
 }
 
 Assert-Admin
+$Root = Resolve-HelperRoot -Explicit $Root
 New-DirectoryIfMissing -Path $Root
 $queue = Join-Path $Root "queue"
 $done = Join-Path $Root "done"

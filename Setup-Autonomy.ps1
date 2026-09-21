@@ -49,6 +49,18 @@ function Get-FileHashText($path) {
     if (Test-Path -LiteralPath $path) { return (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash }
     return $null
 }
+function Resolve-HelperRoot {
+    # Explicit pointer written by the elevated installer wins; else the documented default.
+    # Without this, a custom -InstallRoot produced a permanent false STALE/modified result.
+    $pointer = Join-Path (Join-Path $CodexRoot "autonomy-kit") "helper-root.json"
+    if (Test-Path -LiteralPath $pointer) {
+        try {
+            $p = Get-Content -LiteralPath $pointer -Raw | ConvertFrom-Json
+            if ($p.install_root) { return $p.install_root }
+        } catch { }
+    }
+    return "C:\dev\CodexElevatedHelper"
+}
 function Get-GeneratedConfig($coreText) {
     return @"
 $configMarker
@@ -82,8 +94,12 @@ if (-not $ConfigOnly) {
         if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
             Warn "winget not found; install Python manually or install App Installer, then re-run."
         } else {
-            winget install -e --id Python.Python.3.12 --scope user `
-                --accept-package-agreements --accept-source-agreements --disable-interactivity
+            try {
+                winget install -e --id Python.Python.3.12 --scope user `
+                    --accept-package-agreements --accept-source-agreements --disable-interactivity
+            } catch {
+                Warn "Python install failed: $($_.Exception.Message)"
+            }
             $pyExe = Get-ChildItem "$env:LOCALAPPDATA\Programs\Python\Python3*\python.exe" -ErrorAction SilentlyContinue |
                 Sort-Object FullName -Descending | Select-Object -First 1
         }
@@ -101,7 +117,11 @@ if (-not $ConfigOnly) {
 
     Step "uv"
     if (-not (Test-Path "$env:USERPROFILE\.local\bin\uv.exe")) {
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
+        try {
+            powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
+        } catch {
+            Warn "uv install failed: $($_.Exception.Message)"
+        }
     }
     Prepend-UserPath "$env:USERPROFILE\.local\bin"
     if (Test-Path "$env:USERPROFILE\.local\bin\uv.exe") {
@@ -110,11 +130,19 @@ if (-not $ConfigOnly) {
 
     Step "scoop"
     if (-not (Test-Path "$env:USERPROFILE\scoop\shims\scoop.ps1")) {
-        Invoke-Expression (Invoke-RestMethod -Uri "https://get.scoop.sh")
+        try {
+            Invoke-Expression (Invoke-RestMethod -Uri "https://get.scoop.sh")
+        } catch {
+            Warn "scoop install failed: $($_.Exception.Message)"
+        }
     }
     Prepend-UserPath "$env:USERPROFILE\scoop\shims"
     $scoop = "$env:USERPROFILE\scoop\shims\scoop.ps1"
-    & $scoop bucket add main *> $null
+    if (Test-Path -LiteralPath $scoop) {
+        try { & $scoop bucket add main *> $null } catch { Warn "scoop bucket add failed: $($_.Exception.Message)" }
+    } else {
+        Warn "scoop unavailable; skipping tool installs that require it."
+    }
 
     Step "core tools via scoop"
     $wanted = [ordered]@{ 'nodejs-lts' = 'node'; 'gh' = 'gh'; 'ripgrep' = 'rg'; 'jq' = 'jq'; 'sqlite' = 'sqlite3' }
@@ -123,7 +151,11 @@ if (-not $ConfigOnly) {
         if (Get-Command $cmd -ErrorAction SilentlyContinue) {
             Note "$cmd already present - skip"
         } else {
-            & $scoop install $pkg
+            try {
+                & $scoop install $pkg
+            } catch {
+                Warn "scoop install $pkg failed: $($_.Exception.Message)"
+            }
         }
     }
 
@@ -131,9 +163,13 @@ if (-not $ConfigOnly) {
     $py3cmd = (Get-Command python3 -ErrorAction SilentlyContinue).Source
     if (-not $py3cmd -and $pyExe) { $py3cmd = Join-Path $pyExe.Directory.FullName "python3.exe" }
     if ($py3cmd) {
-        & $py3cmd -m pip install --quiet --upgrade playwright
-        if (-not $SkipBrowsers) { & $py3cmd -m playwright install }
-        Note "playwright: $(& $py3cmd -m playwright --version 2>&1)"
+        try {
+            & $py3cmd -m pip install --quiet --upgrade playwright
+            if (-not $SkipBrowsers) { & $py3cmd -m playwright install }
+            Note "playwright: $(& $py3cmd -m playwright --version 2>&1)"
+        } catch {
+            Warn "Playwright install failed: $($_.Exception.Message)"
+        }
     } else {
         Warn "python3 not found; skipped Playwright install."
     }
@@ -192,7 +228,8 @@ if (-not $SkipHelper -and -not $ConfigOnly) {
     Step "elevated dev helper"
     $helperTask = Get-ScheduledTask -TaskName "CodexElevatedDevHelper" -ErrorAction SilentlyContinue
     $helperInstall = Join-Path $kit "elevated-dev-helper\Install-ElevatedDevHelper-AsAdmin.cmd"
-    $installedHelper = "C:\dev\CodexElevatedHelper\ElevatedDevHelper.ps1"
+    $helperRoot = Resolve-HelperRoot
+    $installedHelper = Join-Path $helperRoot "ElevatedDevHelper.ps1"
     if ($helperTask) {
         Note "CodexElevatedDevHelper already installed ($($helperTask.State))"
         $repoHash = Get-FileHashText (Join-Path $kit "elevated-dev-helper\ElevatedDevHelper.ps1")

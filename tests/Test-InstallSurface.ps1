@@ -197,6 +197,49 @@ try {
 } catch { Add-Result "helper_hardening" "FAIL" $_.Exception.Message }
 
 try {
+    # Helper root must be resolved via the install-time pointer, not a bare C:\dev literal.
+    $setupRaw = Get-Content -LiteralPath (Join-Path $kit 'Setup-Autonomy.ps1') -Raw
+    $doctorRaw = Get-Content -LiteralPath (Join-Path $kit 'Doctor-Autonomy.ps1') -Raw
+    $instCmdRaw = Get-Content -LiteralPath (Join-Path $kit 'Install-Autonomy.cmd') -Raw
+    $installerRaw = Get-Content -LiteralPath (Join-Path $kit 'elevated-dev-helper\Install-ElevatedDevHelper.ps1') -Raw
+    $ok = (
+        $installerRaw -match 'helper-root\.json' -and
+        $setupRaw -match 'Resolve-HelperRoot' -and
+        $setupRaw -match 'Resolve-HelperRoot' -and
+        $doctorRaw -match 'helper-root\.json' -and
+        $instCmdRaw -match 'helper-root\.json'
+    )
+    Add-Result "helper_root_coherence" $(if ($ok) { "PASS" } else { "FAIL" }) "installer writes a root pointer; Setup, Doctor, and the launcher all read it"
+} catch { Add-Result "helper_root_coherence" "FAIL" $_.Exception.Message }
+
+try {
+    # Scheduled-task principal must come from the resolved identity, not bare $env:USERNAME.
+    $helperRaw = Get-Content -LiteralPath (Join-Path $kit 'elevated-dev-helper\ElevatedDevHelper.ps1') -Raw
+    $ok = (
+        $helperRaw -match 'New-ScheduledTaskPrincipal -UserId \$taskUser' -and
+        $helperRaw -match 'WindowsIdentity.*GetCurrent\(\)\.Name' -and
+        $helperRaw -notmatch 'New-ScheduledTaskPrincipal -UserId \$env:USERNAME'
+    )
+    Add-Result "helper_task_principal" $(if ($ok) { "PASS" } else { "FAIL" }) "RegisterDevScheduledTask uses the resolved identity, not the bare account name"
+} catch { Add-Result "helper_task_principal" "FAIL" $_.Exception.Message }
+
+try {
+    # Install steps must be individually guarded so one failure cannot abort config staging.
+    $setupRaw = Get-Content -LiteralPath (Join-Path $kit 'Setup-Autonomy.ps1') -Raw
+    # Each fragile install step must have its own named guard; a count threshold
+    # would let one guard be removed without the check going red.
+    $guards = @('Warn "Python install failed', 'Warn "uv install failed', 'Warn "scoop install failed', 'Warn "scoop install $pkg failed', 'Warn "Playwright install failed')
+    $missingGuards = @($guards | Where-Object { $setupRaw -notmatch [regex]::Escape($_) })
+    $ok = ($missingGuards.Count -eq 0)
+    Add-Result "setup_step_isolation" $(if ($ok) { "PASS" } else { "FAIL" }) $(if ($ok) { "all $($guards.Count) install steps warn-and-continue" } else { "missing guard: $($missingGuards -join ', ')" })
+} catch { Add-Result "setup_step_isolation" "FAIL" $_.Exception.Message }
+
+try {
+    $lic = Join-Path $kit 'LICENSE'
+    Add-Result "license_present" $(if (Test-Path -LiteralPath $lic) { "PASS" } else { "FAIL" }) $(if (Test-Path -LiteralPath $lic) { "root LICENSE present" } else { "no root LICENSE" })
+} catch { Add-Result "license_present" "FAIL" $_.Exception.Message }
+
+try {
     $repoFiles = @('CODEX-Desktop-Core.md','GEN5-Codex-Desktop-Autonomous-Software-Development.md','config.autonomy.example.toml')
     $hashes = @($repoFiles | ForEach-Object { "$_=$(Hash (Join-Path $kit $_))" })
     Add-Result "profile_hashes" "INFO" ($hashes -join '; ')

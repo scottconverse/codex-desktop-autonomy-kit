@@ -72,6 +72,13 @@ if (Test-Path $profileDir) {
 Section "Elevated dev helper"
 $h = Get-ScheduledTask -TaskName "CodexElevatedDevHelper" -ErrorAction SilentlyContinue
 $helperRoot = 'C:\dev\CodexElevatedHelper'
+$helperPointer = Join-Path $profileDir "helper-root.json"
+if (Test-Path -LiteralPath $helperPointer) {
+    try {
+        $hp = Get-Content -LiteralPath $helperPointer -Raw | ConvertFrom-Json
+        if ($hp.install_root) { $helperRoot = $hp.install_root }
+    } catch { }
+}
 if ($h) {
     L "task" "CodexElevatedDevHelper"
     L "  state" $h.State
