@@ -1,6 +1,6 @@
 # Codex Desktop Autonomy Kit
 
-**Version 1.5.0 - Windows** - a click-first setup kit for configuring Codex Desktop toward
+**Version 1.6.0 - Windows** - a click-first setup kit for configuring Codex Desktop toward
 maximum practical software-development autonomy on Windows development machines. See
 [CHANGELOG.md](CHANGELOG.md).
 

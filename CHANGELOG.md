@@ -6,7 +6,7 @@ Verification note: this repository has no CI workflow. Test and smoke-check resu
 recorded in release notes are produced by running the shipped scripts manually, not by
 an automated service.
 
-## Unreleased
+## v1.6.0 - 2026-09-21
 
 ### Added
 - `capability-check` skill: forces an empirical probe of the agent's own access instead of

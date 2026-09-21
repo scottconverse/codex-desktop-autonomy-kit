@@ -1,6 +1,6 @@
 # Codex Desktop Autonomy Kit User Manual
 
-Version 1.5.0 for Windows.
+Version 1.6.0 for Windows.
 
 ![Codex Desktop Autonomy Kit architecture](assets/codex-autonomy-architecture.svg)
 
@@ -129,7 +129,7 @@ without repeated UAC prompts after the helper is installed.
 
 ## Versioning
 
-The current public release is v1.5.0. Setup writes the same version into the staged manifest
+The current public release is v1.6.0. Setup writes the same version into the staged manifest
 at `~/.codex/autonomy-kit/manifest.json`.
 
 ## Safety Notes

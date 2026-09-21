@@ -24,7 +24,7 @@ param(
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $kit = $PSScriptRoot
-$kitVersion = "1.5.0"
+$kitVersion = "1.6.0"
 $configMarker = "# Codex Desktop Autonomy Kit managed config"
 $agentsMarkerBegin = "<!-- Codex Desktop Autonomy Kit: capability-section begin -->"
 $agentsMarkerEnd = "<!-- Codex Desktop Autonomy Kit: capability-section end -->"
