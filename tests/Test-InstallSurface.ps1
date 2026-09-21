@@ -286,6 +286,23 @@ try {
 } catch { Add-Result "capability_piece_shipped" "FAIL" $_.Exception.Message }
 
 try {
+    # Every public doc surface must actually describe the capability feature, not just
+    # carry the version number. Guards against the feature drifting out of the docs.
+    $readme  = Get-Content -LiteralPath (Join-Path $kit 'README.md') -Raw
+    $manual  = Get-Content -LiteralPath (Join-Path $kit 'docs\USER-MANUAL.md') -Raw
+    $landing = Get-Content -LiteralPath (Join-Path $kit 'docs\index.html') -Raw
+    $surfaces = [ordered]@{ 'README.md' = $readme; 'USER-MANUAL.md' = $manual; 'index.html' = $landing }
+    $missing = @()
+    foreach ($name in $surfaces.Keys) {
+        $raw = [string]$surfaces[$name]
+        if ($raw -notmatch 'capability-check') { $missing += ("{0}:no-skill-name" -f $name) }
+        if ($raw -notmatch 'capability self-assessment|Capability Self-Assessment|imagined') { $missing += ("{0}:no-feature-desc" -f $name) }
+    }
+    $ok = ($missing.Count -eq 0)
+    Add-Result "docs_describe_capability_feature" $(if ($ok) { "PASS" } else { "FAIL" }) $(if ($ok) { "README, manual, and landing page all describe the capability feature" } else { "missing: $($missing -join ', ')" })
+} catch { Add-Result "docs_describe_capability_feature" "FAIL" $_.Exception.Message }
+
+try {
     $repoFiles = @('CODEX-Desktop-Core.md','GEN5-Codex-Desktop-Autonomous-Software-Development.md','config.autonomy.example.toml')
     $hashes = @($repoFiles | ForEach-Object { "$_=$(Hash (Join-Path $kit $_))" })
     Add-Result "profile_hashes" "INFO" ($hashes -join '; ')

@@ -28,6 +28,39 @@ install, check, refresh, test, or uninstall the kit.
   so every session is told to probe its access rather than assert untested limits.
 - The `capability-check` skill under `~/.codex/skills/capability-check/`.
 
+## Capability Self-Assessment
+
+The kit installs a rule and a skill whose whole job is to stop the agent inventing a limit
+it never tested.
+
+Why it matters: an agent that believes it cannot write outside its workspace will ask for
+permission it does not need, or hand back a blocker that is not real. That costs more time
+than almost any other failure mode. Telling the agent "you have access" does not reliably
+fix it -- a model can rationalize past an instruction. A probe does fix it, because a probe
+produces evidence.
+
+What lands on your machine:
+
+- `~/.codex/skills/capability-check/SKILL.md` -- the probe protocol and reporting format.
+- A rule appended to `~/.codex/AGENTS.md`, inside begin/end marker comments. It is added
+  only when absent, a backup is taken first, and any content you wrote there is never
+  rewritten. Re-running setup when the block is already current changes nothing.
+- A matching section in `CODEX-Desktop-Core.md`, so the rule travels with the profile.
+
+The rule separates three cases, which is the part that makes it useful:
+
+| Case | What it looks like | Correct response |
+|------|--------------------|------------------|
+| Policy veto | `rejected: blocked by policy`, before the shell runs | Spelling problem. Reformat and retry, e.g. `cmd /c rd /s /q` instead of `Remove-Item -Recurse -Force`. |
+| Real limit | ACL denial, UAC declined, file lock, missing tool | Genuine. Name the exact error and continue everything else. |
+| Imagined limit | Assumed sandbox, workspace-only scope, permission never checked | The common case. Test it instead of asserting it. |
+
+To invoke it deliberately, say **"capability check"**, or use the **`$capability-check`**
+skill. Doctor reports whether the rule and skill are present.
+
+Uninstall removes only the kit-authored block from `AGENTS.md`, keeping your own text, and
+removes the installed skill.
+
 ## Click-First Controls
 
 - `Install-Autonomy.cmd` installs or updates the kit, runs Doctor, and offers to refresh the
@@ -63,6 +96,7 @@ Doctor reports:
 - elevated helper task state,
 - helper queue/result/log directory availability,
 - installed helper script parity against the repo copy.
+- whether the `AGENTS.md` capability rule and the `capability-check` skill are installed.
 
 ## Update
 
