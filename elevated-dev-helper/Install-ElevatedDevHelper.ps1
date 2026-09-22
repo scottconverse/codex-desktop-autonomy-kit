@@ -42,7 +42,7 @@ Copy-Item -LiteralPath $invokerSource -Destination $invokerTarget -Force
 
 $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$target`" -Root `"$InstallRoot`""
 $principal = New-ScheduledTaskPrincipal -UserId $userId -LogonType Interactive -RunLevel Highest
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 2)
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances Queue -ExecutionTimeLimit (New-TimeSpan -Hours 2)
 
 Register-ScheduledTask -TaskName $TaskName -Action $action -Principal $principal -Settings $settings -Force | Out-Null
 
@@ -58,12 +58,14 @@ Register-ScheduledTask -TaskName $TaskName -Action $action -Principal $principal
 
 $jobId = "install-self-test-" + [guid]::NewGuid().ToString("n")
 $jobPath = Join-Path (Join-Path $InstallRoot "queue") ($jobId + ".json")
+$tempJobPath = Join-Path (Join-Path $InstallRoot "queue") ($jobId + ".tmp")
 @{
     action = "CheckAdmin"
     created_at = (Get-Date).ToUniversalTime().ToString("o")
     created_by = $userId
     purpose = "install self-test"
-} | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $jobPath -Encoding UTF8
+} | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $tempJobPath -Encoding UTF8
+[System.IO.File]::Move($tempJobPath, $jobPath)
 
 Start-ScheduledTask -TaskName $TaskName
 

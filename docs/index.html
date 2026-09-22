@@ -178,7 +178,7 @@
 <body>
   <header class="hero">
     <div class="hero-inner">
-      <span class="release">Version 1.7.0 for Windows</span>
+      <span class="release">Version 1.8.0 for Windows</span>
       <h1>Codex Desktop Autonomy Kit</h1>
       <p class="lead">A click-first setup kit that configures Codex Desktop for practical local software-development autonomy: persistent instructions, full local development access, toolchain bootstrap, diagnostics, an audited full-administrator helper, and a capability self-assessment rule that stops an agent inventing limits it never tested.</p>
       <div class="actions">
@@ -202,7 +202,7 @@
         </article>
         <article class="card">
           <h3>Handles elevation</h3>
-          <p>Optionally installs a scheduled-task helper whose <code>RunTrustedPowerShellScript</code> action gives owner-authorized scripts under trusted lexical roots full local-administrator execution: HKLM, Program Files, MSI/installers, services, firewall, scheduled tasks, and other admin operations. Structured jobs and logs provide transport and audit, not a narrow capability boundary.</p>
+          <p>Optionally installs a scheduled-task helper whose <code>RunTrustedPowerShellScript</code> action gives owner-authorized scripts under trusted lexical roots full local-administrator execution. Atomic job publication, queued overlapping starts, and stable queue draining keep requests from being stranded.</p>
         </article>
         <article class="card">
           <h3>Tests its own access</h3>
@@ -252,7 +252,7 @@
     <section>
       <h2>Safety model</h2>
       <div class="callout">
-        The kit is intentionally powerful because it is for owner-controlled Windows development machines. It replaces <code>config.toml</code> only when the file is provably kit-owned &mdash; an exact match for the generated template, or an explicit <code>-ForceConfig</code>. A customized config, including one the kit created but you later edited, is left byte-for-byte unchanged, and a backup is taken before any overwrite. The elevated helper accepts junction/symlink paths lexically under its trusted roots and rejects direct outside-root or prefix-collision paths. Its installed invoker is discovered through <code>~/.codex/autonomy-kit/helper-root.json</code>, including custom roots and task names.</p>
+        The kit is intentionally powerful because it is for owner-controlled Windows development machines. It replaces <code>config.toml</code> only when the file is provably kit-owned &mdash; an exact match for the generated template, or an explicit <code>-ForceConfig</code>. A customized config, including one the kit created but you later edited, is left byte-for-byte unchanged, and a backup is taken before any overwrite. The elevated helper accepts junction/symlink paths lexically under its trusted roots and rejects direct outside-root or prefix-collision paths. Its installed invoker is discovered through <code>~/.codex/autonomy-kit/helper-root.json</code>, including custom roots and task names. Setup verifies the installer exit, task, helper hash, and invoker hash before reporting success.
       </div>
     </section>
 
@@ -275,7 +275,7 @@
     </section>
 
     <footer>
-      <p>Codex Desktop Autonomy Kit v1.7.0. Review scripts before installing on any machine you care about. Read the <a href="https://github.com/scottconverse/codex-desktop-autonomy-kit/blob/master/SECURITY.md">security policy</a>. Higher-priority Codex, project, OS, legal, and safety rules still apply.</p>
+      <p>Codex Desktop Autonomy Kit v1.8.0. Review scripts before installing on any machine you care about. Read the <a href="https://github.com/scottconverse/codex-desktop-autonomy-kit/blob/master/SECURITY.md">security policy</a>. Higher-priority Codex, project, OS, legal, and safety rules still apply.</p>
     </footer>
   </main>
 </body>

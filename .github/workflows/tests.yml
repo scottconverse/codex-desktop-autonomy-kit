@@ -40,6 +40,10 @@ jobs:
         shell: pwsh
         run: ./tests/Test-HelperTrust.ps1
 
+      - name: Elevated helper queue and refresh behavior
+        shell: pwsh
+        run: ./tests/Test-HelperRuntime.ps1
+
       - name: Capability harness
         shell: pwsh
         run: ./tests/Test-AutonomyKit.ps1

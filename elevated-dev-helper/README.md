@@ -69,9 +69,16 @@ The installed invoker discovers the recorded custom root and task name unless ei
 passed explicitly. Results appear below `<install_root>\done`; failures appear below
 `<install_root>\failed`; JSONL audit events appear below `<install_root>\logs`.
 
+The invoker writes each job completely to a temporary file and then atomically renames it to
+`.json`. The helper task uses the `Queue` multiple-instance policy and each worker drains
+until the queue is stable. Together those guarantees prevent a request submitted during an
+active run from being read partially or left waiting for an unrelated future trigger.
+
 Setup detects a missing or stale installed helper and a missing or stale installed invoker.
 Use `Refresh-ElevatedHelper.cmd` or setup's refresh flow to update them. The installer runs
-an elevated `CheckAdmin` self-test and records its result.
+an elevated `CheckAdmin` self-test and records its result. Setup checks the elevated
+installer's exit code and then verifies the task plus both installed script hashes before it
+reports success.
 
 ## Operating boundary
 

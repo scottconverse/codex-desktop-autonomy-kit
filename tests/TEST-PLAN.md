@@ -18,14 +18,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-InstallSurface.
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-ScriptSyntax.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-NoHardcodedPaths.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-HelperTrust.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-HelperRuntime.ps1
 ```
 
-These are the same five scripts run by `Run-Tests.cmd` and the Windows GitHub Actions
+These are the same six scripts run by `Run-Tests.cmd` and the Windows GitHub Actions
 workflow. PASS: every non-INFO check reports PASS.
 
 `Test-InstallSurface.ps1` includes an isolated first-run config check that runs
 `Setup-Autonomy.ps1 -ConfigOnly -CodexRoot <temp>` and proves the generated config, staged
 profiles, and manifest land outside the real profile.
+
+`Test-HelperRuntime.ps1` runs the real queue drain and invoker against isolated directories.
+It submits work during an active job, executes custom root/task discovery, proves atomic job
+publication, and exercises Setup's successful and non-zero refresh paths.
 
 ## Part 2 - No unrequested friction
 

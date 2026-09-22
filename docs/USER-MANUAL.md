@@ -1,6 +1,6 @@
 # Codex Desktop Autonomy Kit User Manual
 
-Version 1.7.0 for Windows.
+Version 1.8.0 for Windows.
 
 ![Codex Desktop Autonomy Kit architecture](assets/codex-autonomy-architecture.svg)
 
@@ -109,7 +109,8 @@ Doctor reports:
 - whether duplicate top-level TOML keys are likely,
 - elevated helper task state,
 - helper queue/result/log directory availability,
-- installed helper script parity against the repo copy.
+- installed helper script parity against the repo copy,
+- installed helper invoker parity against the repo copy,
 - whether the `AGENTS.md` capability rule and the `capability-check` skill are installed.
 
 Doctor does not create directories or write probe files. It is a read-only status check.
@@ -178,6 +179,12 @@ Invoke the installed copy deterministically by reading
 to `<install_root>\Invoke-ElevatedDevHelper.ps1`. The invoker reads the recorded custom
 install root and task name when they are not passed explicitly.
 
+Requests are written to a temporary file and atomically published as JSON. If another
+request arrives while the helper is running, Windows queues another task start and the active
+worker also continues draining until the queue is stable. Setup accepts a helper install or
+refresh only after checking the launcher exit code, scheduled task, and hashes of both
+installed scripts.
+
 The helper is powerful by design. It is intended for single-owner development machines where
 the owner wants Codex to complete local setup, service, SDK, firewall, and toolchain tasks
 without repeated UAC prompts after the helper is installed.
@@ -195,14 +202,14 @@ without repeated UAC prompts after the helper is installed.
 - `elevated-dev-helper/` contains the optional scheduled-task helper.
 - `~/.codex/autonomy-kit/helper-root.json` records the helper install root, task name,
   helper script, and installed invoker, so callers do not assume default paths or names.
-- `tests/` contains five shipped regression and capability checks, including the behavioral
-  trusted-path and hardcoded-path gates.
+- `tests/` contains six shipped regression and capability checks, including behavioral
+  trusted-path, queue-concurrency, custom-refresh, and hardcoded-path gates.
 - `skills/capability-check/` is the shipped skill for testing your own access.
 - `templates/AGENTS-capability-section.md` is the rule the installer appends to `AGENTS.md`.
 
 ## Versioning
 
-The current public release is v1.7.0. Setup writes the same version into the staged manifest
+The current public release is v1.8.0. Setup writes the same version into the staged manifest
 at `~/.codex/autonomy-kit/manifest.json`.
 
 ## Safety Notes

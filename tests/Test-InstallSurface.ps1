@@ -40,7 +40,8 @@ try {
         'docs\assets\codex-autonomy-architecture.svg',
         'docs\discussions\01-welcome-and-installation.md',
         'docs\discussions\02-design-boundaries-and-roadmap.md',
-        'SECURITY.md'
+        'SECURITY.md',
+        'tests\Test-HelperRuntime.ps1'
     )
     $missing = @($required | Where-Object { -not (Test-Path -LiteralPath (Join-Path $kit $_)) })
     Add-Result "required_files" $(if ($missing.Count -eq 0) { "PASS" } else { "FAIL" }) $(if ($missing.Count) { "missing: $($missing -join ', ')" } else { "all present" })
@@ -101,6 +102,20 @@ try {
     )
     Add-Result "installed_invoker_surface" $(if ($ok) { "PASS" } else { "FAIL" }) "installer copies invoker and records it in both metadata files; invoker discovers custom root/task"
 } catch { Add-Result "installed_invoker_surface" "FAIL" $_.Exception.Message }
+
+try {
+    $helperInstaller = Get-Content -LiteralPath (Join-Path $kit 'elevated-dev-helper\Install-ElevatedDevHelper.ps1') -Raw
+    $helper = Get-Content -LiteralPath (Join-Path $kit 'elevated-dev-helper\ElevatedDevHelper.ps1') -Raw
+    $invoker = Get-Content -LiteralPath (Join-Path $kit 'elevated-dev-helper\Invoke-ElevatedDevHelper.ps1') -Raw
+    $ok = (
+        $helperInstaller -match '-MultipleInstances\s+Queue' -and
+        $helperInstaller -match '\[System\.IO\.File\]::Move\(\$tempJobPath, \$jobPath\)' -and
+        $invoker -match '\[System\.IO\.File\]::Move\(\$tempJobPath, \$jobPath\)' -and
+        $helper -match 'function Invoke-QueuedJobs' -and
+        $helper -match 'while \(\$quietPasses -lt \$QuietPassesRequired\)'
+    )
+    Add-Result "helper_queue_delivery_surface" $(if ($ok) { "PASS" } else { "FAIL" }) "task queues overlapping starts; producers publish atomically; worker drains to stable empty"
+} catch { Add-Result "helper_queue_delivery_surface" "FAIL" $_.Exception.Message }
 
 try {
     $skill = Get-Content -LiteralPath (Join-Path $kit 'skills\capability-check\SKILL.md') -Raw
@@ -165,30 +180,31 @@ try {
 } catch { Add-Result "bootstrap_and_ci_pins" "FAIL" $_.Exception.Message }
 
 try {
-    $version = '1.7.0'
-    $surfaces = @(
-        'README.md',
-        'CHANGELOG.md',
-        'Setup-Autonomy.ps1',
-        'docs\index.html',
-        'docs\USER-MANUAL.md'
-    )
-    $missingVersion = @()
-    foreach ($surface in $surfaces) {
-        $raw = Get-Content -LiteralPath (Join-Path $kit $surface) -Raw
-        if ($raw -notmatch [regex]::Escape($version)) { $missingVersion += $surface }
-    }
+    $setupRaw = Get-Content -LiteralPath (Join-Path $kit 'Setup-Autonomy.ps1') -Raw
     $readme = Get-Content -LiteralPath (Join-Path $kit 'README.md') -Raw
+    $changelog = Get-Content -LiteralPath (Join-Path $kit 'CHANGELOG.md') -Raw
     $manual = Get-Content -LiteralPath (Join-Path $kit 'docs\USER-MANUAL.md') -Raw
     $landing = Get-Content -LiteralPath (Join-Path $kit 'docs\index.html') -Raw
+    $versions = [ordered]@{
+        Setup = [regex]::Match($setupRaw, '(?m)^\$kitVersion\s*=\s*"(\d+\.\d+\.\d+)"').Groups[1].Value
+        README = [regex]::Match($readme, '(?m)^\*\*Version (\d+\.\d+\.\d+) - Windows\*\*').Groups[1].Value
+        Changelog = [regex]::Match($changelog, '(?m)^## v(\d+\.\d+\.\d+)\s+-').Groups[1].Value
+        Manual = [regex]::Match($manual, '(?m)^Version (\d+\.\d+\.\d+) for Windows\.').Groups[1].Value
+        LandingBadge = [regex]::Match($landing, '<span class="release">Version (\d+\.\d+\.\d+) for Windows</span>').Groups[1].Value
+        LandingFooter = [regex]::Match($landing, 'Codex Desktop Autonomy Kit v(\d+\.\d+\.\d+)\.').Groups[1].Value
+    }
+    $versionValues = @($versions.Values)
+    $version = $versions.Setup
     $ok = (
-        $missingVersion.Count -eq 0 -and
+        $version -match '^\d+\.\d+\.\d+$' -and
+        @($versionValues | Where-Object { $_ -ne $version }).Count -eq 0 -and
         $readme -notmatch 'Keep this repo private|private personal kit' -and
         $readme -match 'docs/assets/codex-autonomy-architecture\.svg' -and
         $manual -match 'assets/codex-autonomy-architecture\.svg' -and
         $landing -match 'assets/codex-autonomy-architecture\.svg'
     )
-    Add-Result "public_docs_versioning" $(if ($ok) { "PASS" } else { "FAIL" }) $(if ($missingVersion.Count) { "missing version in: $($missingVersion -join ', ')" } else { "public docs include current version and architecture graphic" })
+    $detail = (($versions.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; ')
+    Add-Result "public_docs_versioning" $(if ($ok) { "PASS" } else { "FAIL" }) "exact current-version fields agree: $detail"
 } catch { Add-Result "public_docs_versioning" "FAIL" $_.Exception.Message }
 
 try {
@@ -197,9 +213,11 @@ try {
     & powershell -NoProfile -ExecutionPolicy Bypass -File $setupPath -ConfigOnly -CodexRoot $tempRoot *> $null
     $config = Join-Path $tempRoot 'config.toml'
     $manifest = Join-Path $tempRoot 'autonomy-kit\manifest.json'
+    $manifestData = if (Test-Path -LiteralPath $manifest) { Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json } else { $null }
     $freshOk = (
         (Test-Path -LiteralPath $config) -and
         (Test-Path -LiteralPath $manifest) -and
+        $manifestData.kit_version -eq $version -and
         ((Get-Content -LiteralPath $config -Raw) -match 'Codex Desktop Autonomy Kit managed config')
     )
     & powershell -NoProfile -ExecutionPolicy Bypass -File $setupPath -ConfigOnly -CodexRoot $tempRoot *> $null

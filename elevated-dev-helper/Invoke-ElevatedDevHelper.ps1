@@ -50,7 +50,12 @@ if ($Protocol) { $job.protocol = $Protocol }
 if ($DevTaskName) { $job.taskName = $DevTaskName }
 
 $jobPath = Join-Path $queue ($jobId + ".json")
-$job | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $jobPath -Encoding UTF8
+$tempJobPath = Join-Path $queue ($jobId + ".tmp")
+
+# Publish jobs atomically. The helper only enumerates *.json, so it can never
+# observe a partially-written request even when it is already draining work.
+$job | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $tempJobPath -Encoding UTF8
+[System.IO.File]::Move($tempJobPath, $jobPath)
 
 Start-ScheduledTask -TaskName $TaskName
 

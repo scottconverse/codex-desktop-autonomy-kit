@@ -66,7 +66,7 @@ function Invoke-LoggedProcess {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $FilePath
     $psi.Arguments = (($Arguments | ForEach-Object {
-        if ($_ -match '\s') { '"' + $_ + '"' } else { [string]$_ }
+        ConvertTo-WindowsCommandLineArgument -Argument ([string]$_)
     }) -join ' ')
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
@@ -91,6 +91,34 @@ function Invoke-LoggedProcess {
         stdout = $(if ($outTask.IsCompleted) { $outTask.Result } else { "" })
         stderr = $(if ($errTask.IsCompleted) { $errTask.Result } else { "" })
     }
+}
+
+function ConvertTo-WindowsCommandLineArgument {
+    param([AllowEmptyString()][string]$Argument)
+
+    # CommandLineToArgvW-compatible quoting. Backslashes are doubled only when
+    # they precede a quote or the closing quote; embedded quotes are escaped.
+    if ($Argument.Length -gt 0 -and $Argument -notmatch '[\s"]') { return $Argument }
+    $builder = New-Object System.Text.StringBuilder
+    [void]$builder.Append('"')
+    $slashes = 0
+    foreach ($char in $Argument.ToCharArray()) {
+        if ($char -eq '\') {
+            $slashes++
+            continue
+        }
+        if ($char -eq '"') {
+            [void]$builder.Append(('\' * (($slashes * 2) + 1)))
+            [void]$builder.Append('"')
+        } else {
+            if ($slashes) { [void]$builder.Append(('\' * $slashes)) }
+            [void]$builder.Append($char)
+        }
+        $slashes = 0
+    }
+    if ($slashes) { [void]$builder.Append(('\' * ($slashes * 2))) }
+    [void]$builder.Append('"')
+    return $builder.ToString()
 }
 
 function Resolve-HelperRoot {
@@ -216,8 +244,66 @@ function Invoke-HelperAction {
     }
 }
 
+function Invoke-QueuedJobs {
+    param(
+        [Parameter(Mandatory=$true)][string]$QueuePath,
+        [Parameter(Mandatory=$true)][string]$DonePath,
+        [Parameter(Mandatory=$true)][string]$FailedPath,
+        [Parameter(Mandatory=$true)][string]$LogPath,
+        [int]$QuietPassesRequired = 2,
+        [int]$QuietPassDelayMilliseconds = 150
+    )
+
+    $processed = 0
+    $quietPasses = 0
+    while ($quietPasses -lt $QuietPassesRequired) {
+        $jobs = @(Get-ChildItem -LiteralPath $QueuePath -Filter "*.json" -File | Sort-Object LastWriteTime)
+        if ($jobs.Count -eq 0) {
+            $quietPasses++
+            if ($quietPasses -lt $QuietPassesRequired) {
+                Start-Sleep -Milliseconds $QuietPassDelayMilliseconds
+            }
+            continue
+        }
+
+        $quietPasses = 0
+        foreach ($jobFile in $jobs) {
+            $jobId = [System.IO.Path]::GetFileNameWithoutExtension($jobFile.Name)
+            try {
+                $job = Get-Content -LiteralPath $jobFile.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+                Write-JsonLog -LogPath $LogPath -Record @{ event = "job_start"; job_id = $jobId; action = $job.action }
+                $result = Invoke-HelperAction -Job $job
+                $resultPath = Join-Path $DonePath ($jobId + ".result.json")
+                @{
+                    job_id = $jobId
+                    status = "ok"
+                    action = $job.action
+                    result = $result
+                    completed_at = (Get-Date).ToUniversalTime().ToString("o")
+                } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $resultPath -Encoding UTF8
+                Move-Item -LiteralPath $jobFile.FullName -Destination (Join-Path $DonePath $jobFile.Name) -Force
+                Write-JsonLog -LogPath $LogPath -Record @{ event = "job_ok"; job_id = $jobId; action = $job.action }
+            } catch {
+                $resultPath = Join-Path $FailedPath ($jobId + ".error.json")
+                @{
+                    job_id = $jobId
+                    status = "failed"
+                    error = $_.Exception.Message
+                    completed_at = (Get-Date).ToUniversalTime().ToString("o")
+                } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $resultPath -Encoding UTF8
+                if (Test-Path -LiteralPath $jobFile.FullName) {
+                    Move-Item -LiteralPath $jobFile.FullName -Destination (Join-Path $FailedPath $jobFile.Name) -Force
+                }
+                Write-JsonLog -LogPath $LogPath -Record @{ event = "job_failed"; job_id = $jobId; error = $_.Exception.Message }
+            }
+            $processed++
+        }
+    }
+    return $processed
+}
+
 # Allow the file to be dot-sourced for testing without executing the helper body.
-# A test sets $env:CODEZ_HELPER_SOURCE_ONLY = "1" and gets the functions only.
+# A test sets $env:CODEX_HELPER_SOURCE_ONLY = "1" and gets the functions only.
 if ($env:CODEX_HELPER_SOURCE_ONLY -eq "1") { return }
 
 Assert-Admin
@@ -235,34 +321,5 @@ $logPath = Join-Path $logs "helper.jsonl"
 
 Write-JsonLog -LogPath $logPath -Record @{ event = "helper_start"; root = $Root; user = $env:USERNAME }
 
-$jobs = Get-ChildItem -LiteralPath $queue -Filter "*.json" -File | Sort-Object LastWriteTime
-foreach ($jobFile in $jobs) {
-    $jobId = [System.IO.Path]::GetFileNameWithoutExtension($jobFile.Name)
-    try {
-        $job = Get-Content -LiteralPath $jobFile.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
-        Write-JsonLog -LogPath $logPath -Record @{ event = "job_start"; job_id = $jobId; action = $job.action }
-        $result = Invoke-HelperAction -Job $job
-        $resultPath = Join-Path $done ($jobId + ".result.json")
-        @{
-            job_id = $jobId
-            status = "ok"
-            action = $job.action
-            result = $result
-            completed_at = (Get-Date).ToUniversalTime().ToString("o")
-        } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $resultPath -Encoding UTF8
-        Move-Item -LiteralPath $jobFile.FullName -Destination (Join-Path $done $jobFile.Name) -Force
-        Write-JsonLog -LogPath $logPath -Record @{ event = "job_ok"; job_id = $jobId; action = $job.action }
-    } catch {
-        $resultPath = Join-Path $failed ($jobId + ".error.json")
-        @{
-            job_id = $jobId
-            status = "failed"
-            error = $_.Exception.Message
-            completed_at = (Get-Date).ToUniversalTime().ToString("o")
-        } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $resultPath -Encoding UTF8
-        Move-Item -LiteralPath $jobFile.FullName -Destination (Join-Path $failed $jobFile.Name) -Force
-        Write-JsonLog -LogPath $logPath -Record @{ event = "job_failed"; job_id = $jobId; error = $_.Exception.Message }
-    }
-}
-
-Write-JsonLog -LogPath $logPath -Record @{ event = "helper_stop"; processed = $jobs.Count }
+$processed = Invoke-QueuedJobs -QueuePath $queue -DonePath $done -FailedPath $failed -LogPath $logPath
+Write-JsonLog -LogPath $logPath -Record @{ event = "helper_stop"; processed = $processed }

@@ -1,6 +1,6 @@
 # Codex Desktop Autonomy Kit
 
-**Version 1.7.0 - Windows** - a click-first setup kit for configuring Codex Desktop toward
+**Version 1.8.0 - Windows** - a click-first setup kit for configuring Codex Desktop toward
 maximum practical software-development autonomy on Windows development machines. See
 [CHANGELOG.md](CHANGELOG.md).
 
@@ -138,7 +138,9 @@ skill are installed.
 
 If the elevated helper is stale, the installer offers to refresh it in the same flow. Approve
 the Windows administrator prompt when you choose yes. The elevated installer window closes
-after the helper install and self-test complete.
+after the helper install and self-test complete. Setup treats a declined UAC prompt, a
+non-zero installer exit, a missing task, or a post-install file-hash mismatch as a failed
+install; it does not report success and continue.
 
 ## Elevated Helper Setup
 
@@ -150,6 +152,10 @@ The helper executes named, structured actions and logs every result. Invoke the 
 copy by reading `~/.codex/autonomy-kit/helper-root.json` and running its `invoker_script`
 value (or `<install_root>\Invoke-ElevatedDevHelper.ps1` as the fallback). This preserves
 custom install roots and task names end to end.
+
+The invoker publishes each request atomically, and the scheduled task queues overlapping
+starts instead of dropping them. The worker drains arrivals until the queue is stable, so a
+job submitted while another job is running is not left stranded until some future trigger.
 
 Be clear about what that does and does not mean. One of the supported actions,
 `RunTrustedPowerShellScript`, runs **any PowerShell script located under a trusted
