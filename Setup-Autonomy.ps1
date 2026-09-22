@@ -127,17 +127,26 @@ function Install-AgentsCapabilityRule {
         Note ("appended capability rule to existing AGENTS.md (your content preserved; {0} -> {1} bytes)" -f $preBytes, $postBytes)
     }
 }
-function Resolve-HelperRoot {
-    # Explicit pointer written by the elevated installer wins; else the documented default.
-    # Without this, a custom -InstallRoot produced a permanent false STALE/modified result.
+function Resolve-HelperInstall {
+    # The install-time pointer is the source of truth for both a custom root and task.
     $pointer = Join-Path (Join-Path $CodexRoot "autonomy-kit") "helper-root.json"
     if (Test-Path -LiteralPath $pointer) {
         try {
             $p = Get-Content -LiteralPath $pointer -Raw | ConvertFrom-Json
-            if ($p.install_root) { return $p.install_root }
+            if ($p.install_root) {
+                return [pscustomobject]@{
+                    Root = [string]$p.install_root
+                    TaskName = $(if ($p.task_name) { [string]$p.task_name } else { "CodexElevatedDevHelper" })
+                    InvokerScript = $(if ($p.invoker_script) { [string]$p.invoker_script } else { Join-Path ([string]$p.install_root) "Invoke-ElevatedDevHelper.ps1" })
+                }
+            }
         } catch { }
     }
-    return "C:\dev\CodexElevatedHelper"
+    return [pscustomobject]@{
+        Root = "C:\dev\CodexElevatedHelper"
+        TaskName = "CodexElevatedDevHelper"
+        InvokerScript = "C:\dev\CodexElevatedHelper\Invoke-ElevatedDevHelper.ps1"
+    }
 }
 function Get-GeneratedConfig($coreText) {
     return @"
@@ -410,26 +419,32 @@ if (-not $SkipConfig) {
 
 if (-not $SkipHelper -and -not $ConfigOnly) {
     Step "elevated dev helper"
-    $helperTask = Get-ScheduledTask -TaskName "CodexElevatedDevHelper" -ErrorAction SilentlyContinue
+    $helperInstallInfo = Resolve-HelperInstall
+    $helperTask = Get-ScheduledTask -TaskName $helperInstallInfo.TaskName -ErrorAction SilentlyContinue
     $helperInstall = Join-Path $kit "elevated-dev-helper\Install-ElevatedDevHelper-AsAdmin.cmd"
-    $helperRoot = Resolve-HelperRoot
+    $helperRoot = $helperInstallInfo.Root
     $installedHelper = Join-Path $helperRoot "ElevatedDevHelper.ps1"
+    $installedInvoker = $helperInstallInfo.InvokerScript
     if ($helperTask) {
-        Note "CodexElevatedDevHelper already installed ($($helperTask.State))"
-        $repoHash = Get-FileHashText (Join-Path $kit "elevated-dev-helper\ElevatedDevHelper.ps1")
-        $installedHash = Get-FileHashText $installedHelper
-        if ($repoHash -and $installedHash -and $repoHash -ne $installedHash) {
+        Note "$($helperInstallInfo.TaskName) already installed ($($helperTask.State))"
+        $repoHelperHash = Get-FileHashText (Join-Path $kit "elevated-dev-helper\ElevatedDevHelper.ps1")
+        $repoInvokerHash = Get-FileHashText (Join-Path $kit "elevated-dev-helper\Invoke-ElevatedDevHelper.ps1")
+        $installedHelperHash = Get-FileHashText $installedHelper
+        $installedInvokerHash = Get-FileHashText $installedInvoker
+        $helperStale = (-not $installedHelperHash) -or ($repoHelperHash -ne $installedHelperHash)
+        $invokerStale = (-not $installedInvokerHash) -or ($repoInvokerHash -ne $installedInvokerHash)
+        if ($helperStale -or $invokerStale) {
             if ($RefreshHelper) {
-                Note "installed helper differs; launching refresh installer (Windows UAC prompt expected)..."
+                Note "installed helper is stale or missing its invoker; launching refresh installer (Windows UAC prompt expected)..."
                 Start-Process -FilePath $helperInstall -Verb RunAs -Wait
             } else {
-                Warn "installed helper script differs from repo copy; run setup with -RefreshHelper or run elevated-dev-helper\Install-ElevatedDevHelper-AsAdmin.cmd"
+                Warn "installed helper is stale or missing its invoker; run setup with -RefreshHelper or run elevated-dev-helper\Install-ElevatedDevHelper-AsAdmin.cmd"
             }
         }
     } elseif (Test-Path -LiteralPath $helperInstall) {
         Note "launching helper installer (Windows UAC prompt expected)..."
         Start-Process -FilePath $helperInstall -Verb RunAs -Wait
-        $helperTask = Get-ScheduledTask -TaskName "CodexElevatedDevHelper" -ErrorAction SilentlyContinue
+        $helperTask = Get-ScheduledTask -TaskName $helperInstallInfo.TaskName -ErrorAction SilentlyContinue
         Note ("helper: {0}" -f $(if ($helperTask) { 'installed' } else { 'NOT installed (UAC declined or installer error)' }))
     } else {
         Warn "helper installer not found: $helperInstall"

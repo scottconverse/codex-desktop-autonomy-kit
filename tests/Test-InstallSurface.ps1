@@ -65,6 +65,7 @@ try {
     $oneStopInstaller = (
         $installer -match 'Doctor-Autonomy\.ps1' -and
         $installer -match 'Install-ElevatedDevHelper-AsAdmin\.cmd' -and
+        $installer -match 'Invoke-ElevatedDevHelper\.ps1' -and
         $installer -match 'Refresh elevated helper now'
     )
     Add-Result "double_click_launchers" $(if ($missingLinks.Count -eq 0 -and $oneStopInstaller) { "PASS" } else { "FAIL" }) $(if ($missingLinks.Count) { "bad launchers: $($missingLinks -join ', ')" } elseif (-not $oneStopInstaller) { "installer is not one-stop" } else { "all launchers point at expected scripts; installer includes doctor + helper refresh flow" })
@@ -78,11 +79,53 @@ try {
         $adminLauncher -match '-Wait' -and
         $adminLauncher -match '-PassThru' -and
         $adminLauncher -match 'exit \$p\.ExitCode' -and
+        $adminLauncher -match 'helper-root\.json' -and
+        $adminLauncher -match '-InstallRoot' -and
+        $adminLauncher -match '-TaskName' -and
         $helperInstaller -match 'AddSeconds\(30\)' -and
         $helperInstaller -match 'self-test did not confirm administrator execution'
     )
     Add-Result "elevated_installer_closes" $(if ($ok) { "PASS" } else { "FAIL" }) "admin launcher waits, propagates exit code, and closes after installer exits"
 } catch { Add-Result "elevated_installer_closes" "FAIL" $_.Exception.Message }
+
+try {
+    $installer = Get-Content -LiteralPath (Join-Path $kit 'elevated-dev-helper\Install-ElevatedDevHelper.ps1') -Raw
+    $invoker = Get-Content -LiteralPath (Join-Path $kit 'elevated-dev-helper\Invoke-ElevatedDevHelper.ps1') -Raw
+    $ok = (
+        $installer -match 'Copy-Item -LiteralPath \$invokerSource -Destination \$invokerTarget -Force' -and
+        ([regex]::Matches($installer, 'invoker_script\s*=\s*\$invokerTarget').Count -eq 2) -and
+        $installer -match 'helper-root\.json' -and
+        $invoker -match 'helper-root\.json' -and
+        $invoker -match '\$pointer\.install_root' -and
+        $invoker -match '\$pointer\.task_name'
+    )
+    Add-Result "installed_invoker_surface" $(if ($ok) { "PASS" } else { "FAIL" }) "installer copies invoker and records it in both metadata files; invoker discovers custom root/task"
+} catch { Add-Result "installed_invoker_surface" "FAIL" $_.Exception.Message }
+
+try {
+    $skill = Get-Content -LiteralPath (Join-Path $kit 'skills\capability-check\SKILL.md') -Raw
+    $ok = (
+        $skill -match '\$helperPointerPath' -and
+        $skill -match '\$helperPointer\.invoker_script' -and
+        $skill -match 'Join-Path \(\[string\]\$helperPointer\.install_root\) "Invoke-ElevatedDevHelper\.ps1"' -and
+        $skill -match '& \$helperInvoker -Action CheckAdmin' -and
+        $skill -notmatch '\.\.\.\\Invoke-ElevatedDevHelper'
+    )
+    Add-Result "capability_skill_helper_discovery" $(if ($ok) { "PASS" } else { "FAIL" }) "capability skill deterministically reads pointer metadata and invokes the installed invoker"
+} catch { Add-Result "capability_skill_helper_discovery" "FAIL" $_.Exception.Message }
+
+try {
+    $setup = Get-Content -LiteralPath (Join-Path $kit 'Setup-Autonomy.ps1') -Raw
+    $ok = (
+        $setup -match 'Resolve-HelperInstall' -and
+        $setup -match 'Get-ScheduledTask -TaskName \$helperInstallInfo\.TaskName' -and
+        $setup -match '\$helperStale = \(-not \$installedHelperHash\)' -and
+        $setup -match '\$invokerStale = \(-not \$installedInvokerHash\)' -and
+        $setup -match '\$repoInvokerHash -ne \$installedInvokerHash' -and
+        $setup -match 'if \(\$helperStale -or \$invokerStale\)'
+    )
+    Add-Result "setup_helper_refresh_detection" $(if ($ok) { "PASS" } else { "FAIL" }) "setup uses pointer task/root and detects missing or stale helper and invoker"
+} catch { Add-Result "setup_helper_refresh_detection" "FAIL" $_.Exception.Message }
 
 try {
     $configExample = Get-Content -LiteralPath (Join-Path $kit 'config.autonomy.example.toml') -Raw
@@ -102,7 +145,7 @@ try {
         $setup -match 'custom config\.toml found; left unchanged' -and
         $setup -match 'manifest\.json' -and
         $setup -match 'config-backup-manifest\.json' -and
-        $setup -match 'helper script differs from repo copy' -and
+        $setup -match 'installed helper is stale or missing its invoker' -and
         $setup -match '\[switch\]\$ConfigOnly' -and
         $setup -match '\[string\]\$CodexRoot' -and
         $setup -match '\[switch\]\$RefreshHelper'
@@ -200,6 +243,8 @@ try {
     $ok = (
         $doctor -match 'duplicate top keys' -and
         $doctor -match 'helper script parity' -and
+        $doctor -match 'invoker script parity' -and
+        $doctor -match '\$helperTaskName' -and
         $doctor -match 'STALE/modified' -and
         $doctor -match 'write probes' -and
         $doctor -notmatch 'Is-WritableDir|New-Item|Set-Content|Remove-Item'
@@ -269,10 +314,12 @@ try {
     $installerRaw = Get-Content -LiteralPath (Join-Path $kit 'elevated-dev-helper\Install-ElevatedDevHelper.ps1') -Raw
     $ok = (
         $installerRaw -match 'helper-root\.json' -and
-        $setupRaw -match 'Resolve-HelperRoot' -and
-        $setupRaw -match 'Resolve-HelperRoot' -and
+        $setupRaw -match 'Resolve-HelperInstall' -and
+        $setupRaw -match 'Invok(erScript|e-ElevatedDevHelper)' -and
         $doctorRaw -match 'helper-root\.json' -and
-        $instCmdRaw -match 'helper-root\.json'
+        $doctorRaw -match 'invoker script parity' -and
+        $instCmdRaw -match 'helper-root\.json' -and
+        $instCmdRaw -match 'Invoke-ElevatedDevHelper\.ps1'
     )
     Add-Result "helper_root_coherence" $(if ($ok) { "PASS" } else { "FAIL" }) "installer writes a root pointer; Setup, Doctor, and the launcher all read it"
 } catch { Add-Result "helper_root_coherence" "FAIL" $_.Exception.Message }

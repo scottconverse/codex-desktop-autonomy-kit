@@ -62,16 +62,28 @@ Test-Path $probe
 # 5. Elevation: is an elevated path actually available?
 ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
-# 6. Is the autonomy kit installed on this machine?
-Test-Path "$env:USERPROFILE\.codex\autonomy-kit\helper-root.json"
-Get-ScheduledTask -TaskName "CodexElevatedDevHelper" -ErrorAction SilentlyContinue
+# 6. Is the autonomy kit installed on this machine? Read its exact root/task/invoker.
+$helperPointerPath = Join-Path $env:USERPROFILE ".codex\autonomy-kit\helper-root.json"
+$helperPointer = if (Test-Path -LiteralPath $helperPointerPath) {
+    Get-Content -LiteralPath $helperPointerPath -Raw | ConvertFrom-Json
+}
+$helperTaskName = if ($helperPointer.task_name) { [string]$helperPointer.task_name } else { "CodexElevatedDevHelper" }
+$helperInvoker = if ($helperPointer.invoker_script) {
+    [string]$helperPointer.invoker_script
+} elseif ($helperPointer.install_root) {
+    Join-Path ([string]$helperPointer.install_root) "Invoke-ElevatedDevHelper.ps1"
+} else {
+    "C:\dev\CodexElevatedHelper\Invoke-ElevatedDevHelper.ps1"
+}
+Get-ScheduledTask -TaskName $helperTaskName -ErrorAction SilentlyContinue
+Test-Path -LiteralPath $helperInvoker
 ```
 
 For elevation specifically: if the helper task exists, you have a **no-per-action-UAC
 admin path**. Queue a job rather than claiming you cannot do privileged work:
 
 ```powershell
-& "$env:USERPROFILE\.codex\autonomy-kit\...\Invoke-ElevatedDevHelper.ps1" -Action CheckAdmin
+& $helperInvoker -Action CheckAdmin
 ```
 
 Resolve the helper root from `~/.codex/autonomy-kit/helper-root.json` first; do not

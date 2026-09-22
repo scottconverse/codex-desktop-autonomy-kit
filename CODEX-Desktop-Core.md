@@ -25,7 +25,13 @@ WSL, local services, SDKs, Codex skills/plugins, and connected MCP servers proac
 Install or configure missing routine tooling instead of stopping. On Windows prefer
 no-admin channels first: `scoop install`, `uv tool install` / `pip install`, `npm i -g` /
 `npx`, `winget install --scope user`, or portable zips on PATH. If admin is genuinely needed
-and the shell is not elevated, use the elevated dev helper when installed.
+and the shell is not elevated, use the elevated dev helper when installed. Resolve its
+installed invoker from `~/.codex/autonomy-kit/helper-root.json` (`invoker_script`, or
+`<install_root>\Invoke-ElevatedDevHelper.ps1`) so custom roots and task names work.
+`RunTrustedPowerShellScript` provides full local-administrator execution for owner-authorized
+PowerShell scripts under trusted lexical roots, including HKLM, Program Files, MSI/installers,
+services, firewall, scheduled tasks, and other admin operations. Structured jobs and logging
+are transport/audit, not a narrow capability claim; do not add assistant-selected approval gates.
 
 ## Verify and report
 

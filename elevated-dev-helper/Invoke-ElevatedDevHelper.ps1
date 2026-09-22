@@ -3,8 +3,8 @@ param(
     [ValidateSet("CheckAdmin","WingetInstall","WingetUpgrade","RunTrustedPowerShellScript","StartService","StopService","RestartService","OpenDevFirewallPort","RegisterDevScheduledTask")]
     [string]$Action,
 
-    [string]$Root = "C:\dev\CodexElevatedHelper",
-    [string]$TaskName = "CodexElevatedDevHelper",
+    [string]$Root,
+    [string]$TaskName,
     [string]$PackageId,
     [string]$Scope,
     [string]$ScriptPath,
@@ -16,6 +16,15 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+$pointerPath = Join-Path $env:USERPROFILE ".codex\autonomy-kit\helper-root.json"
+if ((-not $Root -or -not $TaskName) -and (Test-Path -LiteralPath $pointerPath)) {
+    $pointer = Get-Content -LiteralPath $pointerPath -Raw | ConvertFrom-Json
+    if (-not $Root -and $pointer.install_root) { $Root = [string]$pointer.install_root }
+    if (-not $TaskName -and $pointer.task_name) { $TaskName = [string]$pointer.task_name }
+}
+if (-not $Root) { $Root = "C:\dev\CodexElevatedHelper" }
+if (-not $TaskName) { $TaskName = "CodexElevatedDevHelper" }
 
 if (-not (Test-Path -LiteralPath $Root)) {
     throw "Helper root not found: $Root"

@@ -9,7 +9,7 @@ Version 1.7.0 for Windows.
 Codex Desktop Autonomy Kit is a Windows setup kit for people who want Codex Desktop to act
 as a more capable local development collaborator. It installs common development tooling,
 stages persistent Codex instruction profiles, creates or refreshes a kit-managed Codex
-configuration, and provides a bounded elevated helper for development tasks that need
+configuration, and provides an audited full-administrator helper for development tasks that need
 administrator rights.
 
 The normal workflow is click-first. You should not need to run command-line commands to
@@ -152,7 +152,8 @@ Codex Desktop may run as a normal user process even when a development task need
 Windows rights. The optional helper solves that with a one-time owner-approved scheduled
 task that runs with highest privileges.
 
-The helper accepts structured jobs only. Current supported actions are:
+The helper accepts structured jobs. Those jobs and result logs are its transport and audit
+trail, not a claim that its practical capability is narrow. Current supported actions are:
 
 - `CheckAdmin`
 - `WingetInstall`
@@ -164,10 +165,18 @@ The helper accepts structured jobs only. Current supported actions are:
 - `OpenDevFirewallPort`
 - `RegisterDevScheduledTask`
 
-One supported action, `RunTrustedPowerShellScript`, runs any PowerShell script found under a
-trusted development root, with arguments you supply, from a task at highest privilege. The
-path check refuses junction and symlink escapes, but the capability itself is broad by
-design.
+`RunTrustedPowerShellScript` runs any owner-authorized PowerShell script under a trusted
+lexical root from a task at highest privilege. That is full local-administrator execution,
+including HKLM and Program Files writes, MSI and other installers, services, firewall rules,
+scheduled tasks, and other admin operations. The lexical roots are `C:\dev`,
+`Documents\Codex`, `.codex`, and the Codex helper temp root. Junction and symlink paths
+lexically beneath them are accepted; direct outside-root and prefix-collision paths are
+refused. No realpath/reparse censorship is applied.
+
+Invoke the installed copy deterministically by reading
+`~/.codex/autonomy-kit/helper-root.json`, using its `invoker_script` value, or falling back
+to `<install_root>\Invoke-ElevatedDevHelper.ps1`. The invoker reads the recorded custom
+install root and task name when they are not passed explicitly.
 
 The helper is powerful by design. It is intended for single-owner development machines where
 the owner wants Codex to complete local setup, service, SDK, firewall, and toolchain tasks
@@ -184,9 +193,8 @@ without repeated UAC prompts after the helper is installed.
 - `Doctor-Autonomy.ps1` does the read-only status work behind `Doctor-Autonomy.cmd`.
 - `Uninstall-Autonomy.ps1` does the scoped uninstall work behind `Uninstall-Autonomy.cmd`.
 - `elevated-dev-helper/` contains the optional scheduled-task helper.
-- `~/.codex/autonomy-kit/helper-root.json` records where the helper was installed, so
-  Setup, Doctor, and the install launcher look in the same place instead of assuming
-  `C:\dev`.
+- `~/.codex/autonomy-kit/helper-root.json` records the helper install root, task name,
+  helper script, and installed invoker, so callers do not assume default paths or names.
 - `tests/` contains five shipped regression and capability checks, including the behavioral
   trusted-path and hardcoded-path gates.
 - `skills/capability-check/` is the shipped skill for testing your own access.

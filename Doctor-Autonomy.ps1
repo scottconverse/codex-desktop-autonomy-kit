@@ -84,19 +84,24 @@ if (-not $isDefaultRoot) {
     return
 }
 
-$h = Get-ScheduledTask -TaskName "CodexElevatedDevHelper" -ErrorAction SilentlyContinue
 $helperRoot = 'C:\dev\CodexElevatedHelper'
+$helperTaskName = 'CodexElevatedDevHelper'
+$installedInvoker = $null
 $helperPointer = Join-Path $profileDir "helper-root.json"
 if (Test-Path -LiteralPath $helperPointer) {
     try {
         $hp = Get-Content -LiteralPath $helperPointer -Raw | ConvertFrom-Json
         if ($hp.install_root) { $helperRoot = $hp.install_root }
+        if ($hp.task_name) { $helperTaskName = [string]$hp.task_name }
+        if ($hp.invoker_script) { $installedInvoker = [string]$hp.invoker_script }
     } catch { }
 }
+$h = Get-ScheduledTask -TaskName $helperTaskName -ErrorAction SilentlyContinue
+if (-not $installedInvoker) { $installedInvoker = Join-Path $helperRoot "Invoke-ElevatedDevHelper.ps1" }
 if ($h) {
-    L "task" "CodexElevatedDevHelper"
+    L "task" $helperTaskName
     L "  state" $h.State
-    $hinfo = Get-ScheduledTaskInfo -TaskName "CodexElevatedDevHelper"
+    $hinfo = Get-ScheduledTaskInfo -TaskName $helperTaskName
     L "  last run" $hinfo.LastRunTime
     L "  last result code" $hinfo.LastTaskResult
     L "  install root" $helperRoot
@@ -113,5 +118,9 @@ $installedHelper = Join-Path $helperRoot "ElevatedDevHelper.ps1"
 $repoHash = Hash $repoHelper
 $installedHash = Hash $installedHelper
 L "  helper script parity" $(if (-not $installedHash) { 'installed copy missing' } elseif ($repoHash -eq $installedHash) { 'current' } else { 'STALE/modified' })
+$repoInvoker = Join-Path $kit "elevated-dev-helper\Invoke-ElevatedDevHelper.ps1"
+$repoInvokerHash = Hash $repoInvoker
+$installedInvokerHash = Hash $installedInvoker
+L "  invoker script parity" $(if (-not $installedInvokerHash) { 'installed copy missing' } elseif ($repoInvokerHash -eq $installedInvokerHash) { 'current' } else { 'STALE/modified' })
 
 Write-Host ""

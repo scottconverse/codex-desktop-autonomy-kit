@@ -22,6 +22,10 @@ $source = Join-Path $PSScriptRoot "ElevatedDevHelper.ps1"
 if (-not (Test-Path -LiteralPath $source)) {
     throw "Missing helper script: $source"
 }
+$invokerSource = Join-Path $PSScriptRoot "Invoke-ElevatedDevHelper.ps1"
+if (-not (Test-Path -LiteralPath $invokerSource)) {
+    throw "Missing helper invoker: $invokerSource"
+}
 
 New-Item -ItemType Directory -Force -Path $InstallRoot | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $InstallRoot "queue") | Out-Null
@@ -32,7 +36,9 @@ $installLog = Join-Path $InstallRoot "install-log.txt"
 "[$((Get-Date).ToUniversalTime().ToString("o"))] Installer running as $userId; elevated=True" | Add-Content -LiteralPath $installLog -Encoding UTF8
 
 $target = Join-Path $InstallRoot "ElevatedDevHelper.ps1"
+$invokerTarget = Join-Path $InstallRoot "Invoke-ElevatedDevHelper.ps1"
 Copy-Item -LiteralPath $source -Destination $target -Force
+Copy-Item -LiteralPath $invokerSource -Destination $invokerTarget -Force
 
 $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$target`" -Root `"$InstallRoot`""
 $principal = New-ScheduledTaskPrincipal -UserId $userId -LogonType Interactive -RunLevel Highest
@@ -45,6 +51,7 @@ Register-ScheduledTask -TaskName $TaskName -Action $action -Principal $principal
     task_name = $TaskName
     install_root = $InstallRoot
     helper_script = $target
+    invoker_script = $invokerTarget
     user_id = $userId
     installed_at = (Get-Date).ToUniversalTime().ToString("o")
 } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $InstallRoot "install-state.json") -Encoding UTF8
@@ -94,6 +101,7 @@ New-Item -ItemType Directory -Force -Path $pointerDir | Out-Null
     install_root = $InstallRoot
     task_name = $TaskName
     helper_script = $target
+    invoker_script = $invokerTarget
     user_id = $userId
     updated_at = (Get-Date).ToUniversalTime().ToString("o")
 } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $pointerDir "helper-root.json") -Encoding UTF8
