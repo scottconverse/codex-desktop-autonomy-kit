@@ -113,8 +113,8 @@ try {
 try {
     $setup = Get-Content -LiteralPath (Join-Path $kit 'Setup-Autonomy.ps1') -Raw
     $workflow = Get-Content -LiteralPath (Join-Path $kit '.github\workflows\tests.yml') -Raw
-    $uvPinned = [regex]::Match($setup, '(?m)^\s*\$uvPinnedHash\s*=\s*"([A-Fa-f0-9]{64})"$').Success
-    $scoopPinned = [regex]::Match($setup, '(?m)^\s*\$scoopPinnedHash\s*=\s*"([A-Fa-f0-9]{64})"$').Success
+    $uvPinned = [regex]::Match($setup, '(?m)^\s*\$uvPinnedHash\s*=\s*"([A-Fa-f0-9]{64})"\s*$').Success
+    $scoopPinned = [regex]::Match($setup, '(?m)^\s*\$scoopPinnedHash\s*=\s*"([A-Fa-f0-9]{64})"\s*$').Success
     $failClosed = ($setup -match 'has no SHA-256 pin - refused to run it') -and ($setup -notmatch 'No pin configured; running it')
     $checkoutPinned = $workflow -match 'actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683'
     $ok = $uvPinned -and $scoopPinned -and $failClosed -and $checkoutPinned
