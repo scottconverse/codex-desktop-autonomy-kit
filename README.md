@@ -1,6 +1,6 @@
 # Codex Desktop Autonomy Kit
 
-**Version 1.6.0 - Windows** - a click-first setup kit for configuring Codex Desktop toward
+**Version 1.6.1 - Windows** - a click-first setup kit for configuring Codex Desktop toward
 maximum practical software-development autonomy on Windows development machines. See
 [CHANGELOG.md](CHANGELOG.md).
 
@@ -86,11 +86,25 @@ From a clean Windows/Codex box, clone or download the kit, then double-click:
 
 Then restart Codex Desktop so PATH and config changes load.
 
-`Setup-Autonomy.ps1` creates `~/.codex/config.toml` only if it does not already exist, or
-refreshes it only when it is clearly kit-managed. If you already have a custom config, it
-leaves it unchanged and stages the kit files under `~/.codex/autonomy-kit` for manual merge.
-Backups are created only before setup overwrites a kit-managed or forced config. This avoids
-breaking Codex with duplicate TOML keys.
+### What setup will and will not do to your config
+
+`Setup-Autonomy.ps1` creates `~/.codex/config.toml` only when it does not exist. If one exists,
+it replaces it only when the file is provably kit-owned:
+
+- **It matches the exact template the kit generates**, optionally differing only in the kit's
+  own `# version = "..."` line.
+- **You passed `-ForceConfig`** explicitly.
+
+Anything else -- including a config that carries the kit marker but which you have edited
+since -- is left byte-for-byte unchanged, and setup stages files under
+`~/.codex/autonomy-kit/` for manual merge. A backup is taken before any overwrite that does
+happen.
+
+The kit does **not** use substring or "looks like a template" heuristics to decide ownership.
+v1.6.1 fixed exactly that: an earlier version treated a config as kit-managed when it merely
+contained the core heading and an `approval_policy = "never"` line, and could overwrite a
+heavily customized config. A false positive here costs your entire configuration, so the test
+is anchored and the real-world custom shapes are regression-tested.
 
 Besides config, setup stages the instruction profiles under `~/.codex/autonomy-kit`, installs
 the `capability-check` skill, and appends the capability rule to `~/.codex/AGENTS.md` (keeping

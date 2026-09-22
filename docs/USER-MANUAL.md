@@ -1,6 +1,6 @@
 # Codex Desktop Autonomy Kit User Manual
 
-Version 1.6.0 for Windows.
+Version 1.6.1 for Windows.
 
 ![Codex Desktop Autonomy Kit architecture](assets/codex-autonomy-architecture.svg)
 
@@ -102,9 +102,14 @@ Doctor reports:
 
 Pull or download the latest repo version, then double-click `Install-Autonomy.cmd`.
 
-If your Codex config is kit-managed, setup refreshes it. If your config is custom, setup
-leaves it unchanged and stages current kit files under `~/.codex/autonomy-kit` for manual
-merge.
+Setup replaces `config.toml` only when the file is provably kit-owned: it matches the exact
+generated template (optionally differing only in the kit's own version comment line), or you
+passed `-ForceConfig`. Any other file is left byte-for-byte unchanged, including a config that
+has the kit marker but which you have edited since -- setup reports that case and leaves it
+alone. When it does overwrite, it backs up first.
+
+Setup never uses substring or "looks like a template" heuristics to decide ownership. v1.6.1
+fixed exactly that defect; see the changelog.
 
 ## Uninstall
 
@@ -163,11 +168,14 @@ without repeated UAC prompts after the helper is installed.
 
 ## Versioning
 
-The current public release is v1.6.0. Setup writes the same version into the staged manifest
+The current public release is v1.6.1. Setup writes the same version into the staged manifest
 at `~/.codex/autonomy-kit/manifest.json`.
 
 ## Safety Notes
 
+- **Back up `~/.codex/config.toml` before installing on a machine whose setup you care
+  about.** Setup backs up before any overwrite it performs, but an independent copy costs
+  nothing and is the thing you would want if anything at all goes wrong.
 - Read scripts before installing on a machine you care about.
 - Do not commit machine-specific helper logs, queued jobs, secrets, or tokens.
 - Keep the helper on development machines you control.
