@@ -24,7 +24,7 @@ param(
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $kit = $PSScriptRoot
-$kitVersion = "1.6.0"
+$kitVersion = "1.6.1"
 $configMarker = "# Codex Desktop Autonomy Kit managed config"
 $agentsMarkerBegin = "<!-- Codex Desktop Autonomy Kit: capability-section begin -->"
 $agentsMarkerEnd = "<!-- Codex Desktop Autonomy Kit: capability-section end -->"
@@ -260,9 +260,49 @@ if (-not $SkipConfig) {
         Note "created kit-managed config.toml"
     } else {
         $raw = Get-Content -LiteralPath $config -Raw
-        $isKitManaged = ($raw -like "$configMarker*") -or ($raw -match 'Codex Desktop Autonomy Kit managed config')
-        $looksLikeOldKitConfig = ($raw -match 'Codex Desktop Autonomy Core \(compact\)' -and $raw -match 'approval_policy\s*=\s*"never"')
-        if ($ForceConfig -or $isKitManaged -or $looksLikeOldKitConfig) {
+
+        # Ownership test. Only two things may be replaced:
+        #   1. A file that matches the exact config this kit generates (byte-for-byte
+        #      after normalization). This is the only positive proof of kit ownership.
+        #   2. A file whose FIRST non-blank line is the kit marker. Anchored at the
+        #      start, so a customized config that merely embeds the marker deeper in
+        #      the file is not captured.
+        #
+        # History: an earlier version classified a config as kit-owned when it merely
+        # CONTAINED the Autonomy Core heading and an approval_policy="never" line
+        # anywhere in the file. That unanchored substring test matched ordinary
+        # customized configs -- anyone using approval_policy="never" plus the core
+        # profile as developer_instructions -- and the installer replaced the entire
+        # file, destroying model selection, appearance, plugins, hooks, and project
+        # trust. Never reintroduce a substring/heuristic ownership test here. The
+        # consequence of a false positive is total config loss.
+        $firstMeaningfulLine = ($raw -split "`r?`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -First 1)
+        $startsWithMarker = ($null -ne $firstMeaningfulLine) -and ($firstMeaningfulLine.Trim() -eq $configMarker)
+        $matchesGenerated = ((Normalize-ConfigText $raw) -eq (Normalize-ConfigText $generated))
+
+        # The marker proves the kit CREATED the file. It does not prove the user has
+        # not edited it since. A marked file that the user extended must be preserved,
+        # not silently replaced with the template -- that would discard their additions.
+        #
+        # So: replace only when the file is exactly the generated template, optionally
+        # differing ONLY in the version comment line that setup itself maintains. A
+        # marked-but-modified file is reported and left alone unless -ForceConfig.
+        $markedButModified = $startsWithMarker -and (-not $matchesGenerated)
+        $matchesPreviousKitRelease = $false
+        if ($markedButModified) {
+            # Tolerate only the kit's own "# version = "x.y.z"" line differing, which
+            # is the one thing a version bump legitimately changes.
+            $stripVersion = { param($t) (($t -replace '(?m)^\s*#\s*version\s*=\s*"[^"]*"\s*$', '# version = "(current)"')) }
+            $a = & $stripVersion (Normalize-ConfigText $raw)
+            $b = & $stripVersion (Normalize-ConfigText $generated)
+            $matchesPreviousKitRelease = ($a -eq $b)
+        }
+
+        # $ForceConfig is an explicit, deliberate override and is the only way to
+        # replace a config that the kit did not generate or that the user has edited.
+        $isProvablyKitOwned = $matchesGenerated -or $matchesPreviousKitRelease
+
+        if ($ForceConfig -or $isProvablyKitOwned) {
             if ((Normalize-ConfigText $raw) -eq (Normalize-ConfigText $generated)) {
                 Note "kit-managed config.toml already current"
             } else {
@@ -270,8 +310,13 @@ if (-not $SkipConfig) {
                 Write-GeneratedConfig -path $config -coreText $core
                 Note "refreshed kit-managed config.toml"
             }
+        } elseif ($markedButModified) {
+            Warn "config.toml carries the kit marker but has been modified since (your edits detected)"
+            Note "left unchanged to protect your additions"
+            Note "to replace it with the kit template anyway, re-run with -ForceConfig"
+            Note "merge staged files from $profileDir when ready"
         } else {
-            Note "custom config.toml found; left unchanged"
+            Note "custom config.toml found; left unchanged (not kit-owned, so never replaced)"
             Note "merge staged files from $profileDir when ready"
         }
     }

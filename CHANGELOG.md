@@ -6,6 +6,37 @@ Verification note: this repository has no CI workflow. Test and smoke-check resu
 recorded in release notes are produced by running the shipped scripts manually, not by
 an automated service.
 
+## v1.6.1 - 2026-09-21
+
+### Fixed
+- **Data loss: the installer could replace a customized `config.toml`.** `Setup-Autonomy.ps1`
+  classified a config as kit-managed when it merely *contained* the Autonomy Core heading and
+  an `approval_policy = "never"` line anywhere in the file. Any customized config matching both
+  -- for example, one using `approval_policy = "never"` with the core profile as
+  `developer_instructions` -- was treated as a replaceable template and overwritten in full,
+  destroying model selection, appearance settings, plugins, hooks, and project trust entries.
+  The test suite did not catch it because the custom-config case used a single-line file that
+  could not trigger the heuristic.
+
+  The ownership test is now anchored: a config is replaced only when it matches the generated
+  template exactly (optionally differing only in the kit's own version comment line), or when
+  `-ForceConfig` is passed explicitly. A config carrying the kit marker but edited since
+  installation is now preserved and reported, rather than silently replaced.
+
+  Real-world custom shapes are now regression-tested: `never` plus the core heading, `never`
+  plus plugin tables, marker present but not first, kit template with user additions, and a
+  fully customized config. Each must survive byte-for-byte. The mutation that reintroduced the
+  original heuristic turns four checks red.
+
+- `Uninstall-Autonomy.ps1` now requires both the begin and end capability markers in
+  `AGENTS.md`. A lone begin marker previously risked a partial excision; it is now left
+  untouched and reported for manual review.
+
+### Notes
+- If you installed v1.5.0 or v1.6.0 on a machine with a customized `config.toml`, check
+  `~/.codex/config.toml.bak-*` for a pre-install backup. The installer always backed up before
+  overwriting, so the prior configuration should be recoverable from the most recent backup.
+
 ## v1.6.0 - 2026-09-21
 
 ### Added

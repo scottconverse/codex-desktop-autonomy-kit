@@ -178,7 +178,7 @@
 <body>
   <header class="hero">
     <div class="hero-inner">
-      <span class="release">Version 1.6.0 for Windows</span>
+      <span class="release">Version 1.6.1 for Windows</span>
       <h1>Codex Desktop Autonomy Kit</h1>
       <p class="lead">A click-first setup kit that configures Codex Desktop for practical local software-development autonomy: persistent instructions, full local development access, toolchain bootstrap, diagnostics, a bounded elevated helper, and a capability self-assessment rule that stops an agent inventing limits it never tested.</p>
       <div class="actions">
@@ -207,6 +207,10 @@
         <article class="card">
           <h3>Tests its own access</h3>
           <p>Installs a <code>capability-check</code> skill and a standing rule that make the agent probe what it can actually do instead of stopping to ask for permissions it already has.</p>
+        </article>
+        <article class="card">
+          <h3>Never eats your config</h3>
+          <p>Replaces <code>config.toml</code> only on an exact template match or explicit force. Customized settings &mdash; models, theme, plugins, hooks, project trust &mdash; are left untouched, byte-for-byte.
         </article>
       </div>
     </section>
@@ -248,7 +252,7 @@
     <section>
       <h2>Safety model</h2>
       <div class="callout">
-        The kit is intentionally powerful because it is for owner-controlled Windows development machines. It preserves custom Codex configs by default, creates backups before overwriting kit-managed configs, and keeps the elevated helper structured around named development actions with logs and result files.
+        The kit is intentionally powerful because it is for owner-controlled Windows development machines. It replaces <code>config.toml</code> only when the file is provably kit-owned &mdash; an exact match for the generated template, or an explicit <code>-ForceConfig</code>. A customized config, including one the kit created but you later edited, is left byte-for-byte unchanged, and a backup is taken before any overwrite. The elevated helper stays structured around named development actions with logs and result files.
       </div>
     </section>
 
@@ -271,7 +275,7 @@
     </section>
 
     <footer>
-      <p>Codex Desktop Autonomy Kit v1.6.0. Review scripts before installing on any machine you care about. Higher-priority Codex, project, OS, legal, and safety rules still apply.</p>
+      <p>Codex Desktop Autonomy Kit v1.6.1. Review scripts before installing on any machine you care about. Higher-priority Codex, project, OS, legal, and safety rules still apply.</p>
     </footer>
   </main>
 </body>

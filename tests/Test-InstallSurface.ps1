@@ -109,7 +109,7 @@ try {
 } catch { Add-Result "setup_custom_config_guard" "FAIL" $_.Exception.Message }
 
 try {
-    $version = '1.6.0'
+    $version = '1.6.1'
     $surfaces = @(
         'README.md',
         'CHANGELOG.md',
@@ -150,14 +150,33 @@ try {
     $kitBackups = @(Get-ChildItem -LiteralPath $tempRoot -Filter 'config.toml.bak-*' -ErrorAction SilentlyContinue)
     $repeatKitOk = ($kitBackups.Count -eq 0)
 
-    "custom=true" | Set-Content -LiteralPath $config -Encoding UTF8
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $setupPath -ConfigOnly -CodexRoot $tempRoot *> $null
-    $customContent = Get-Content -LiteralPath $config -Raw
-    $backups = @(Get-ChildItem -LiteralPath $tempRoot -Filter 'config.toml.bak-*' -ErrorAction SilentlyContinue)
-    $customOk = ($customContent -match 'custom=true' -and $backups.Count -eq 0)
+    $customOk = $true
+    $customDetail = @()
+    $customShapes = [ordered]@{
+        'trivial'                  = 'custom=true'
+        'never-plus-core-heading'  = "approval_policy = `"never`"`ndeveloper_instructions = `"`"`"# Codex Desktop Autonomy Core (compact)`"`"`"`nuser_key = `"keep`""
+        'never-plus-plugins'       = "approval_policy = `"never`"`n[plugins.`"x@openai-bundled`"]`nenabled = true"
+        'marker-in-middle'         = "model = `"x`"`n# Codex Desktop Autonomy Kit managed config`napproval_policy = `"never`"`nuser_key = `"keep`""
+        'kit-template-then-edited' = "# Codex Desktop Autonomy Kit managed config`napproval_policy = `"never`"`nsandbox_mode = `"danger-full-access`"`n[windows]`nsandbox = `"elevated`"`nuser_added = `"keep`""
+        'full-customized'          = "model = `"deepseek-v4.1-flash:cloud`"`napproval_policy = `"never`"`n[desktop]`nappearanceTheme = `"dark`"`n[plugins.`"browser@openai-bundled`"]`nenabled = true"
+    }
+    foreach ($shapeName in $customShapes.Keys) {
+        $marker = 'CONFIG-PRESERVE-MARKER'
+        $body = $customShapes[$shapeName] + "`npreserve_marker = `"$marker`""
+        Set-Content -LiteralPath $config -Value $body -Encoding UTF8 -NoNewline
+        $hashBefore = (Get-FileHash -Algorithm SHA256 -LiteralPath $config).Hash
+        $bakBefore = @(Get-ChildItem -LiteralPath $tempRoot -Filter 'config.toml.bak-*' -ErrorAction SilentlyContinue).Count
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $setupPath -ConfigOnly -CodexRoot $tempRoot *> $null
+        $hashAfter = (Get-FileHash -Algorithm SHA256 -LiteralPath $config).Hash
+        $bakAfter = @(Get-ChildItem -LiteralPath $tempRoot -Filter 'config.toml.bak-*' -ErrorAction SilentlyContinue).Count
+        $contentNow = Get-Content -LiteralPath $config -Raw
+        # Must be byte-identical: not rewritten, not backed up-and-replaced.
+        $preserved = ($hashBefore -eq $hashAfter) -and ($contentNow -match [regex]::Escape($marker)) -and ($bakAfter -eq $bakBefore)
+        if (-not $preserved) { $customOk = $false; $customDetail += $shapeName }
+    }
 
     Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
-    Add-Result "setup_configonly_isolated" $(if ($freshOk -and $repeatKitOk -and $customOk) { "PASS" } else { "FAIL" }) "fresh isolated root writes kit config+manifest; repeat kit/custom configs avoid backup churn"
+    Add-Result "setup_configonly_isolated" $(if ($freshOk -and $repeatKitOk -and $customOk) { "PASS" } else { "FAIL" }) "fresh isolated root writes kit config+manifest; repeat kit/custom configs avoid backup churn" $(if ($customOk) {} else { "  clobbered: $($customDetail -join ', ')" })
 } catch {
     if ($tempRoot -and (Test-Path -LiteralPath $tempRoot)) { Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue }
     Add-Result "setup_configonly_isolated" "FAIL" $_.Exception.Message
@@ -301,6 +320,20 @@ try {
     $ok = ($missing.Count -eq 0)
     Add-Result "docs_describe_capability_feature" $(if ($ok) { "PASS" } else { "FAIL" }) $(if ($ok) { "README, manual, and landing page all describe the capability feature" } else { "missing: $($missing -join ', ')" })
 } catch { Add-Result "docs_describe_capability_feature" "FAIL" $_.Exception.Message }
+
+try {
+    # THE regression this project must never repeat. An earlier release classified a
+    # config as kit-owned when it merely CONTAINED the Autonomy Core heading plus an
+    # approval_policy="never" line, then replaced the whole file. That destroyed real
+    # user configuration (model selection, appearance, plugins, hooks, project trust).
+    # This test asserts the detection is anchored, not heuristic.
+    $setupRaw = Get-Content -LiteralPath (Join-Path $kit 'Setup-Autonomy.ps1') -Raw
+    $noHeuristic = -not ($setupRaw -match 'looksLikeOldKitConfig')
+    $hasAnchor = ($setupRaw -match 'firstMeaningfulLine') -and ($setupRaw -match 'matchesGenerated')
+    $ownerWarn = ($setupRaw -match 'has been modified since')
+    $ok = $noHeuristic -and $hasAnchor -and $ownerWarn
+    Add-Result "config_ownership_is_anchored" $(if ($ok) { "PASS" } else { "FAIL" }) "no unanchored ownership heuristic; requires exact template match or anchored marker; marked-but-edited configs are preserved"
+} catch { Add-Result "config_ownership_is_anchored" "FAIL" $_.Exception.Message }
 
 try {
     $repoFiles = @('CODEX-Desktop-Core.md','GEN5-Codex-Desktop-Autonomous-Software-Development.md','config.autonomy.example.toml')

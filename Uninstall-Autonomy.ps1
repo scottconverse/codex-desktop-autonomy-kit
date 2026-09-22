@@ -66,7 +66,14 @@ $agentsMarkerBegin = "<!-- Codex Desktop Autonomy Kit: capability-section begin 
 $agentsMarkerEnd = "<!-- Codex Desktop Autonomy Kit: capability-section end -->"
 if (Test-Path -LiteralPath $agents) {
     $raw = Get-Content -LiteralPath $agents -Raw
-    if ($raw -match [regex]::Escape($agentsMarkerBegin)) {
+    # Require BOTH markers. Excising a begin without a matching end would corrupt the
+    # file, so a half-matched block is left alone and reported rather than half-removed.
+    $hasBegin = $raw -match [regex]::Escape($agentsMarkerBegin)
+    $hasEnd = $raw -match [regex]::Escape($agentsMarkerEnd)
+    if ($hasBegin -and -not $hasEnd) {
+        Write-Host "AGENTS.md has a capability begin marker with no end marker - left unchanged (manual review needed)"
+    }
+    if ($hasBegin -and $hasEnd) {
         if ($PSCmdlet.ShouldProcess($agents, "remove kit capability block")) {
             $pattern = "(?s)\r?\n?" + [regex]::Escape($agentsMarkerBegin) + ".*?" + [regex]::Escape($agentsMarkerEnd) + "\r?\n?"
             $cleaned = [regex]::Replace($raw, $pattern, "", 1)
@@ -78,7 +85,7 @@ if (Test-Path -LiteralPath $agents) {
                 Write-Host "removed kit capability block from AGENTS.md (your content kept)"
             }
         }
-    } else {
+    } elseif (-not $hasBegin) {
         Write-Host "AGENTS.md has no kit capability block - left unchanged"
     }
 }
