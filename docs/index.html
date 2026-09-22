@@ -198,7 +198,7 @@
         </article>
         <article class="card">
           <h3>Installs useful tools</h3>
-          <p>Bootstraps common user-scope development tools: Python, uv, Node.js, GitHub CLI, ripgrep, jq, SQLite, and Playwright.</p>
+          <p>Bootstraps common user-scope development tools: Python, uv, Node.js, GitHub CLI, ripgrep, jq, SQLite, and Playwright. Remote bootstrap scripts run only after release-pinned SHA-256 verification.</p>
         </article>
         <article class="card">
           <h3>Handles elevation</h3>
@@ -210,7 +210,7 @@
         </article>
         <article class="card">
           <h3>Never eats your config</h3>
-          <p>Replaces <code>config.toml</code> only on an exact template match or explicit force. Customized settings &mdash; models, theme, plugins, hooks, project trust &mdash; are left untouched, byte-for-byte.
+          <p>Replaces <code>config.toml</code> only on an exact template match or explicit force. Customized settings &mdash; models, theme, plugins, hooks, project trust &mdash; are left untouched, byte-for-byte. Any overwrite records the exact backup and hash, and uninstall restores only that recorded backup.</p>
         </article>
       </div>
     </section>
@@ -275,7 +275,7 @@
     </section>
 
     <footer>
-      <p>Codex Desktop Autonomy Kit v1.7.0. Review scripts before installing on any machine you care about. Higher-priority Codex, project, OS, legal, and safety rules still apply.</p>
+      <p>Codex Desktop Autonomy Kit v1.7.0. Review scripts before installing on any machine you care about. Read the <a href="../SECURITY.md">security policy</a>. Higher-priority Codex, project, OS, legal, and safety rules still apply.</p>
     </footer>
   </main>
 </body>

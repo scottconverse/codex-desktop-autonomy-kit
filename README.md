@@ -4,7 +4,7 @@
 maximum practical software-development autonomy on Windows development machines. See
 [CHANGELOG.md](CHANGELOG.md).
 
-[Landing page](docs/index.html) | [User manual](docs/USER-MANUAL.md) | [Elevated helper details](elevated-dev-helper/README.md)
+[Landing page](docs/index.html) | [User manual](docs/USER-MANUAL.md) | [Security policy](SECURITY.md) | [Elevated helper details](elevated-dev-helper/README.md)
 
 ![Codex Desktop Autonomy Kit architecture](docs/assets/codex-autonomy-architecture.svg)
 
@@ -47,6 +47,7 @@ refresh, then restart Codex Desktop.
 - `tests/` - capability harness, behavioral test plan, and hardcoded-path regression guard.
 - `skills/capability-check/` - shipped skill that makes an agent probe its own access instead of asserting limits it never tested.
 - `templates/AGENTS-capability-section.md` - the marker-delimited capability rule Setup appends to your global `AGENTS.md`.
+- `SECURITY.md` - reporting path and the elevated-helper threat-model boundary.
 
 ## Capability Self-Assessment
 
@@ -111,7 +112,9 @@ it replaces it only when the file is provably kit-owned:
 Anything else -- including a config that carries the kit marker but which you have edited
 since -- is left byte-for-byte unchanged, and setup stages files under
 `~/.codex/autonomy-kit/` for manual merge. A backup is taken before any overwrite that does
-happen.
+happen. When an existing config is overwritten, setup records that exact backup path and
+SHA-256 in `~/.codex/autonomy-kit/config-backup-manifest.json`; uninstall restores only that
+recorded backup, never an arbitrary newest `.bak-*` file.
 
 The kit does **not** use substring or "looks like a template" heuristics to decide ownership.
 v1.6.1 fixed exactly that: an earlier version treated a config as kit-managed when it merely
@@ -123,8 +126,13 @@ Besides config, setup stages the instruction profiles under `~/.codex/autonomy-k
 the `capability-check` skill, and appends the capability rule to `~/.codex/AGENTS.md` (keeping
 any content you already had there).
 
-Status check: double-click `Doctor-Autonomy.cmd`. Doctor also reports whether the capability
-rule and skill are installed.
+The two remote bootstrap scripts for uv and Scoop are downloaded to temporary files and must
+match release-pinned SHA-256 values before they run. A missing pin or mismatch refuses to
+execute the downloaded script.
+
+Status check: double-click `Doctor-Autonomy.cmd`. Doctor is read-only: it reports directory
+presence without creating write-probe files. It also reports whether the capability rule and
+skill are installed.
 
 If the elevated helper is stale, the installer offers to refresh it in the same flow. Approve
 the Windows administrator prompt when you choose yes. The elevated installer window closes

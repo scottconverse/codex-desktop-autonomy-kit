@@ -39,7 +39,8 @@ try {
         'docs\USER-MANUAL.md',
         'docs\assets\codex-autonomy-architecture.svg',
         'docs\discussions\01-welcome-and-installation.md',
-        'docs\discussions\02-design-boundaries-and-roadmap.md'
+        'docs\discussions\02-design-boundaries-and-roadmap.md',
+        'SECURITY.md'
     )
     $missing = @($required | Where-Object { -not (Test-Path -LiteralPath (Join-Path $kit $_)) })
     Add-Result "required_files" $(if ($missing.Count -eq 0) { "PASS" } else { "FAIL" }) $(if ($missing.Count) { "missing: $($missing -join ', ')" } else { "all present" })
@@ -100,6 +101,7 @@ try {
         $setup -match 'Codex Desktop Autonomy Kit managed config' -and
         $setup -match 'custom config\.toml found; left unchanged' -and
         $setup -match 'manifest\.json' -and
+        $setup -match 'config-backup-manifest\.json' -and
         $setup -match 'helper script differs from repo copy' -and
         $setup -match '\[switch\]\$ConfigOnly' -and
         $setup -match '\[string\]\$CodexRoot' -and
@@ -107,6 +109,17 @@ try {
     )
     Add-Result "setup_custom_config_guard" $(if ($ok) { "PASS" } else { "FAIL" }) "marker, staging manifest, custom guard, isolated root, helper refresh warning"
 } catch { Add-Result "setup_custom_config_guard" "FAIL" $_.Exception.Message }
+
+try {
+    $setup = Get-Content -LiteralPath (Join-Path $kit 'Setup-Autonomy.ps1') -Raw
+    $workflow = Get-Content -LiteralPath (Join-Path $kit '.github\workflows\tests.yml') -Raw
+    $uvPinned = [regex]::Match($setup, '(?m)^\s*\$uvPinnedHash\s*=\s*"([A-Fa-f0-9]{64})"$').Success
+    $scoopPinned = [regex]::Match($setup, '(?m)^\s*\$scoopPinnedHash\s*=\s*"([A-Fa-f0-9]{64})"$').Success
+    $failClosed = ($setup -match 'has no SHA-256 pin - refused to run it') -and ($setup -notmatch 'No pin configured; running it')
+    $checkoutPinned = $workflow -match 'actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683'
+    $ok = $uvPinned -and $scoopPinned -and $failClosed -and $checkoutPinned
+    Add-Result "bootstrap_and_ci_pins" $(if ($ok) { "PASS" } else { "FAIL" }) "uv/Scoop pins fail closed and checkout is pinned to a reviewed SHA"
+} catch { Add-Result "bootstrap_and_ci_pins" "FAIL" $_.Exception.Message }
 
 try {
     $version = '1.7.0'
@@ -188,9 +201,10 @@ try {
         $doctor -match 'duplicate top keys' -and
         $doctor -match 'helper script parity' -and
         $doctor -match 'STALE/modified' -and
-        $doctor -match 'Is-WritableDir'
+        $doctor -match 'write probes' -and
+        $doctor -notmatch 'Is-WritableDir|New-Item|Set-Content|Remove-Item'
     )
-    Add-Result "doctor_surface" $(if ($ok) { "PASS" } else { "FAIL" }) "config duplicate, staged freshness, helper parity, writable dirs"
+    Add-Result "doctor_surface" $(if ($ok) { "PASS" } else { "FAIL" }) "config duplicate, staged freshness, helper parity, read-only directory presence"
 } catch { Add-Result "doctor_surface" "FAIL" $_.Exception.Message }
 
 try {
@@ -198,10 +212,42 @@ try {
     $ok = (
         $uninstall -match 'SupportsShouldProcess' -and
         $uninstall -match 'remove kit-managed config\.toml' -and
-        $uninstall -match 'custom config\.toml found'
+        $uninstall -match 'custom config\.toml found' -and
+        $uninstall -match 'config-backup-manifest\.json' -and
+        $uninstall -match 'Restore-KitBackup' -and
+        $uninstall -notmatch 'Restore-LatestBak'
     )
-    Add-Result "uninstall_safety" $(if ($ok) { "PASS" } else { "FAIL" }) "WhatIf support and kit-owned/custom distinction"
+    Add-Result "uninstall_safety" $(if ($ok) { "PASS" } else { "FAIL" }) "WhatIf support, manifest-owned backup, and kit-owned/custom distinction"
 } catch { Add-Result "uninstall_safety" "FAIL" $_.Exception.Message }
+
+try {
+    $tempC = Join-Path $env:TEMP ("codex-kit-backup-manifest-" + [guid]::NewGuid().ToString("n"))
+    $setupPath = Join-Path $kit 'Setup-Autonomy.ps1'
+    $uninstallPath = Join-Path $kit 'Uninstall-Autonomy.ps1'
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $setupPath -ConfigOnly -CodexRoot $tempC *> $null
+    $configC = Join-Path $tempC 'config.toml'
+    $manifestC = Join-Path $tempC 'autonomy-kit\config-backup-manifest.json'
+    Add-Content -LiteralPath $configC -Value "`nuser_added = `"restore-me`""
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $setupPath -ConfigOnly -ForceConfig -CodexRoot $tempC *> $null
+    $recordC = Get-Content -LiteralPath $manifestC -Raw | ConvertFrom-Json
+    $ownedBackup = [string]$recordC.backup_path
+    $ownedContent = Get-Content -LiteralPath $ownedBackup -Raw
+    $rogueBackup = Join-Path $tempC 'config.toml.bak-99999999999999'
+    Set-Content -LiteralPath $rogueBackup -Value 'ROGUE-BACKUP-MUST-NOT-BE-RESTORED' -Encoding UTF8 -NoNewline
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $uninstallPath -CodexRoot $tempC *> $null
+    $restoredContent = Get-Content -LiteralPath $configC -Raw
+    $ok = (
+        (Test-Path -LiteralPath $ownedBackup) -and
+        ($ownedContent -match 'restore-me') -and
+        ($restoredContent -eq $ownedContent) -and
+        ($restoredContent -notmatch 'ROGUE-BACKUP-MUST-NOT-BE-RESTORED')
+    )
+    if (Test-Path -LiteralPath $tempC) { Remove-Item -LiteralPath $tempC -Recurse -Force -ErrorAction SilentlyContinue }
+    Add-Result "uninstall_backup_ownership" $(if ($ok) { "PASS" } else { "FAIL" }) "uninstall restores the manifest-recorded backup instead of the newest arbitrary .bak file"
+} catch {
+    if ($tempC -and (Test-Path -LiteralPath $tempC)) { Remove-Item -LiteralPath $tempC -Recurse -Force -ErrorAction SilentlyContinue }
+    Add-Result "uninstall_backup_ownership" "FAIL" $_.Exception.Message
+}
 
 try {
     $repoHelper = Join-Path $kit 'elevated-dev-helper\ElevatedDevHelper.ps1'

@@ -15,12 +15,16 @@ administrator rights.
 The normal workflow is click-first. You should not need to run command-line commands to
 install, check, refresh, test, or uninstall the kit.
 
+See [`SECURITY.md`](../SECURITY.md) for the reporting path and the single-owner threat-model
+boundary of the elevated helper.
+
 ## What Gets Installed
 
 - `~/.codex/config.toml` when no custom config exists, or when the existing config is
   clearly kit-managed.
 - `~/.codex/autonomy-kit/` containing the staged compact profile, full profile, config
-  example, and manifest.
+  example, staging manifest, and (when an existing config is replaced) a kit-owned backup
+  manifest.
 - User-scope development tools when missing: Python, uv, Node.js, GitHub CLI, ripgrep, jq,
   SQLite, and Playwright.
 - Optional elevated helper under `C:\dev\CodexElevatedHelper` after you approve Windows UAC.
@@ -77,11 +81,17 @@ removes the installed skill.
 1. **Back up your Codex config** if you already have one:
    `Copy-Item "$env:USERPROFILE\.codex\config.toml" "$env:USERPROFILE\.codex\config.toml.my-backup"`.
    Setup backs up before any overwrite it performs and never replaces a config it did not
-   generate, but an independent copy is the one you control.
+   generate, but an independent copy is the one you control. When it overwrites an existing
+   config, it records the backup path and SHA-256 under
+   `~/.codex/autonomy-kit/config-backup-manifest.json`.
 2. Download or clone the repo.
 3. Double-click `Install-Autonomy.cmd`.
 4. Approve Windows UAC if the helper installer appears.
 5. Restart Codex Desktop.
+
+The uv and Scoop bootstrap scripts are downloaded to temporary files and run only when they
+match the release-pinned SHA-256 values in `Setup-Autonomy.ps1`. A missing pin or a changed
+download is refused rather than executed.
 
 After restart, there is no special invocation phrase. The kit is active through Codex
 Desktop's config file and persistent developer instructions.
@@ -102,6 +112,8 @@ Doctor reports:
 - installed helper script parity against the repo copy.
 - whether the `AGENTS.md` capability rule and the `capability-check` skill are installed.
 
+Doctor does not create directories or write probe files. It is a read-only status check.
+
 ## Update
 
 Pull or download the latest repo version, then double-click `Install-Autonomy.cmd`.
@@ -119,9 +131,12 @@ fixed exactly that defect; see the changelog.
 
 Double-click `Uninstall-Autonomy.cmd`.
 
-This turns the kit off for Codex Desktop by restoring the newest `config.toml.bak-*` backup
-when one exists, or by removing a clearly kit-managed config when no backup exists. It also
-removes staged files from `~/.codex/autonomy-kit`.
+This turns the kit off for Codex Desktop by restoring only the backup recorded in
+`~/.codex/autonomy-kit/config-backup-manifest.json`. The manifest includes the expected path
+and SHA-256, so uninstall never chooses an unrelated newest `config.toml.bak-*` file. If no
+valid kit-owned backup exists, a clearly kit-managed config is removed; an invalid manifest
+leaves the active config in place for manual review. It also removes staged files from
+`~/.codex/autonomy-kit`.
 
 It removes only the kit-authored block from `AGENTS.md`, keeping any content you wrote there,
 and removes the installed `capability-check` skill.
@@ -164,14 +179,16 @@ without repeated UAC prompts after the helper is installed.
 - `GEN5-Codex-Desktop-Autonomous-Software-Development.md` is the deeper operating profile
   for broader work.
 - `config.autonomy.example.toml` is the manual merge template for custom Codex configs.
-- `Setup-Autonomy.ps1` does the real setup work behind `Install-Autonomy.cmd`.
+- `Setup-Autonomy.ps1` does the real setup work behind `Install-Autonomy.cmd`, including
+  fail-closed bootstrap hash verification and kit-owned config-backup recording.
 - `Doctor-Autonomy.ps1` does the read-only status work behind `Doctor-Autonomy.cmd`.
 - `Uninstall-Autonomy.ps1` does the scoped uninstall work behind `Uninstall-Autonomy.cmd`.
 - `elevated-dev-helper/` contains the optional scheduled-task helper.
 - `~/.codex/autonomy-kit/helper-root.json` records where the helper was installed, so
   Setup, Doctor, and the install launcher look in the same place instead of assuming
   `C:\dev`.
-- `tests/` contains regression and capability checks.
+- `tests/` contains five shipped regression and capability checks, including the behavioral
+  trusted-path and hardcoded-path gates.
 - `skills/capability-check/` is the shipped skill for testing your own access.
 - `templates/AGENTS-capability-section.md` is the rule the installer appends to `AGENTS.md`.
 

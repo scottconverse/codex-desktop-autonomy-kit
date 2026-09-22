@@ -2,13 +2,13 @@
 
 All notable changes to the Codex Desktop Autonomy Kit. Dates are UTC.
 
-Verification note: this repository has no CI workflow. Test and smoke-check results
-recorded in release notes are produced by running the shipped scripts manually, not by
-an automated service.
+Verification note: `.github/workflows/tests.yml` runs the five shipped PowerShell checks on
+Windows for pushes to `master`, pull requests, and manual dispatch. Local audit reports
+distinguish scripts run by the auditor from conclusions produced by GitHub Actions.
 
 ## v1.7.0 - 2026-09-21
 
-Security and correctness release from a full GauntletGate audit (5 roles, commit cacb41b).
+Security and correctness release from a full six-desk audit plus coordinator.
 
 ### Fixed
 - **SECURITY: the elevated helper's trusted-path check was bypassable, granting elevated
@@ -36,9 +36,13 @@ Security and correctness release from a full GauntletGate audit (5 roles, commit
 ### Changed
 - **Remote bootstrap scripts are no longer piped straight into the interpreter.**
   `irm ... | iex` for uv and `Invoke-Expression (Invoke-RestMethod ...)` for scoop are
-  replaced by download-to-file, hash-print, and execute. Pinned hashes can be set in
-  `Setup-Autonomy.ps1` (`$uvPinnedHash`, `$scoopPinnedHash`); a mismatch refuses to run the
-  script. Empty pin = download, print the hash, and run, so you can pin deliberately.
+  replaced by download-to-file, release-pinned SHA-256 verification, and execute. A missing
+  or mismatched pin refuses to run the script.
+- **Config backup ownership is explicit.** When setup overwrites an existing config, it
+  records the backup path and SHA-256 in `autonomy-kit/config-backup-manifest.json`.
+  Uninstall restores only that recorded backup and never guesses from the newest `.bak-*` file.
+- **Doctor is actually read-only.** It reports helper-directory presence without creating,
+  writing, or deleting write-probe files.
 - **`-ForceConfig` now reports what it will destroy** before doing it: the top-level keys
   present in the file that are about to be lost, and the backup path.
 - **`Doctor-Autonomy.ps1` accepts `-CodexRoot`** and no longer reports machine-global helper
@@ -95,8 +99,9 @@ Security and correctness release from a full GauntletGate audit (5 roles, commit
 
 ### Notes
 - If you installed v1.5.0 or v1.6.0 on a machine with a customized `config.toml`, check
-  `~/.codex/config.toml.bak-*` for a pre-install backup. The installer always backed up before
-  overwriting, so the prior configuration should be recoverable from the most recent backup.
+  `~/.codex/config.toml.bak-*` for a pre-install backup. Older versions wrote timestamped
+  backups without an ownership manifest; inspect the contents before restoring one. v1.7.0
+  records the exact kit-owned backup and its hash for future uninstall operations.
 
 ## v1.6.0 - 2026-09-21
 
@@ -123,8 +128,8 @@ Security and correctness release from a full GauntletGate audit (5 roles, commit
 - Added root MIT `LICENSE` (previously absent).
 
 ### Notes
-- Repository has no CI workflow; test and smoke-check results are produced by running the
-  shipped scripts manually.
+- At the time of v1.6.0, test and smoke-check results were produced by running the shipped
+  scripts manually. The current repository also runs the five-script Windows workflow above.
 
 ## v1.5.0 - 2026-06-28
 

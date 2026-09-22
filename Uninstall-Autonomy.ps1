@@ -3,9 +3,10 @@
     Reverses the config layer installed by Setup-Autonomy.ps1.
 
 .DESCRIPTION
-    Restores the newest config.toml backup when available. If no backup exists, removes only
-    a config.toml that is clearly kit-managed. Removes staged autonomy profiles. Optionally
-    unregisters the elevated helper task. Leaves the general-purpose toolchain alone.
+    Restores only the config.toml backup recorded by the kit's ownership manifest. If no
+    valid kit-owned backup exists, removes only a config.toml that is clearly kit-managed.
+    Removes staged autonomy profiles. Optionally unregisters the elevated helper task.
+    Leaves the general-purpose toolchain alone.
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
@@ -17,19 +18,69 @@ $ErrorActionPreference = "Stop"
 $cx = $CodexRoot
 $configMarker = "# Codex Desktop Autonomy Kit managed config"
 
-function Restore-LatestBak($path) {
-    $dir = Split-Path -Parent $path
-    $name = Split-Path -Leaf $path
-    $bak = Get-ChildItem -LiteralPath $dir -Filter "$name.bak-*" -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if ($bak) {
-        if ($PSCmdlet.ShouldProcess($path, "restore from $($bak.Name)")) {
-            Copy-Item -LiteralPath $bak.FullName -Destination $path -Force
-            Write-Host "restored $path <- $($bak.Name)"
+function Get-KitBackupRecord($path) {
+    $manifestPath = Join-Path (Join-Path $cx "autonomy-kit") "config-backup-manifest.json"
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { return $null }
+
+    try {
+        $record = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+        if ($record.schema_version -ne 1) { throw "unsupported backup manifest schema" }
+        if ([string]::IsNullOrWhiteSpace([string]$record.source_path)) { throw "source_path missing" }
+        if ([string]::IsNullOrWhiteSpace([string]$record.backup_path)) { throw "backup_path missing" }
+        if ([string]::IsNullOrWhiteSpace([string]$record.backup_sha256)) { throw "backup_sha256 missing" }
+
+        $sourceFull = [System.IO.Path]::GetFullPath($path)
+        $recordSource = [System.IO.Path]::GetFullPath([string]$record.source_path)
+        if (-not [StringComparer]::OrdinalIgnoreCase.Equals($sourceFull, $recordSource)) {
+            throw "source_path does not match the active config"
         }
-        return $true
+
+        $backupFull = [System.IO.Path]::GetFullPath([string]$record.backup_path)
+        $configDir = [System.IO.Path]::GetFullPath((Split-Path -Parent $path))
+        $backupDir = [System.IO.Path]::GetDirectoryName($backupFull)
+        $backupName = [System.IO.Path]::GetFileName($backupFull)
+        $configName = [System.IO.Path]::GetFileName($path)
+        if (-not [StringComparer]::OrdinalIgnoreCase.Equals($configDir, $backupDir)) {
+            throw "backup is outside the config directory"
+        }
+        if ($backupName -notlike "$configName.bak-*") {
+            throw "backup filename is not a config.toml backup"
+        }
+        if (-not (Test-Path -LiteralPath $backupFull -PathType Leaf)) {
+            throw "recorded backup is missing"
+        }
+
+        $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $backupFull).Hash
+        if (-not [StringComparer]::OrdinalIgnoreCase.Equals($actualHash, [string]$record.backup_sha256)) {
+            throw "recorded backup hash does not match"
+        }
+
+        return [pscustomobject]@{
+            Status = 'valid'
+            BackupPath = $backupFull
+            ManifestPath = $manifestPath
+        }
+    } catch {
+        return [pscustomobject]@{
+            Status = 'invalid'
+            ManifestPath = $manifestPath
+            Reason = $_.Exception.Message
+        }
     }
-    return $false
+}
+
+function Restore-KitBackup($path) {
+    $record = Get-KitBackupRecord $path
+    if (-not $record) { return 'missing' }
+    if ($record.Status -ne 'valid') {
+        Write-Host "kit backup manifest invalid; active config left unchanged: $($record.Reason)"
+        return 'invalid'
+    }
+    if ($PSCmdlet.ShouldProcess($path, "restore from $([System.IO.Path]::GetFileName($record.BackupPath))")) {
+        Copy-Item -LiteralPath $record.BackupPath -Destination $path -Force
+        Write-Host "restored $path <- $([System.IO.Path]::GetFileName($record.BackupPath))"
+    }
+    return 'restored'
 }
 
 if ($RemoveHelper) {
@@ -47,15 +98,18 @@ if ($RemoveHelper) {
 
 $config = Join-Path $cx "config.toml"
 if (Test-Path -LiteralPath $config) {
-    if (-not (Restore-LatestBak $config)) {
+    $restoreStatus = Restore-KitBackup $config
+    if ($restoreStatus -ne 'restored') {
         $raw = Get-Content -LiteralPath $config -Raw
-        if ($raw -like "$configMarker*") {
+        if ($restoreStatus -eq 'invalid') {
+            Write-Host "config.toml has a backup manifest requiring manual review; left it in place"
+        } elseif ($raw -like "$configMarker*") {
             if ($PSCmdlet.ShouldProcess($config, "remove kit-managed config.toml")) {
                 Remove-Item -LiteralPath $config -Force
                 Write-Host "removed kit-managed config.toml (no backup found)"
             }
         } else {
-            Write-Host "custom config.toml found and no backup exists; left it in place"
+            Write-Host "custom config.toml found and no valid kit-owned backup exists; left it in place"
         }
     }
 }

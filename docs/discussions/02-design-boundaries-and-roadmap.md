@@ -10,6 +10,8 @@ Current design boundaries:
   there should be a double-click wrapper.
 - Existing custom Codex configs are preserved by default. Setup stages kit files for manual
   merge instead of overwriting unknown user config.
+- When setup does overwrite a kit-owned config, it records the exact backup path and hash;
+  uninstall does not guess from unrelated `.bak-*` files.
 - The elevated helper is powerful but structured. It accepts named development actions and
   writes logs/results; it is not meant to become a generic arbitrary-command admin broker.
 - Uninstall turns the kit off for Codex Desktop but leaves general-purpose tools and helper

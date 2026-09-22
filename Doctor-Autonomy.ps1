@@ -18,18 +18,6 @@ function Hash($path) {
     if (Test-Path -LiteralPath $path) { return (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash }
     return $null
 }
-function Is-WritableDir($path) {
-    try {
-        New-Item -ItemType Directory -Force -Path $path | Out-Null
-        $probe = Join-Path $path (".write-test-" + [guid]::NewGuid().ToString("n"))
-        "ok" | Set-Content -LiteralPath $probe -Encoding UTF8
-        Remove-Item -LiteralPath $probe -Force
-        return $true
-    } catch {
-        return $false
-    }
-}
-
 Section "Toolchain"
 foreach ($t in 'python3','pip','uv','scoop','node','npm','npx','gh','rg','jq','sqlite3','playwright') {
     $src = (Get-Command $t -ErrorAction SilentlyContinue).Source
@@ -117,8 +105,9 @@ if ($h) {
 }
 foreach ($d in 'queue','done','failed','logs') {
     $p = Join-Path $helperRoot $d
-    L "  $d dir" $(if (Test-Path $p) { "present; writable=$(Is-WritableDir $p)" } else { '(missing)' })
+    L "  $d dir" $(if (Test-Path $p) { 'present' } else { '(missing)' })
 }
+L "  write probes" "not run (read-only Doctor)"
 $repoHelper = Join-Path $kit "elevated-dev-helper\ElevatedDevHelper.ps1"
 $installedHelper = Join-Path $helperRoot "ElevatedDevHelper.ps1"
 $repoHash = Hash $repoHelper

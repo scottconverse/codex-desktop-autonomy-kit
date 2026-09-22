@@ -30,11 +30,12 @@ $agentsMarkerBegin = "<!-- Codex Desktop Autonomy Kit: capability-section begin 
 $agentsMarkerEnd = "<!-- Codex Desktop Autonomy Kit: capability-section end -->"
 
 # EN-2: pinned SHA-256 hashes for the two remote bootstrap scripts the kit executes.
-# Empty = not pinned: the script is downloaded and run, and its hash is printed so you
-# can pin it. Set a value to enforce verification and refuse a mismatch.
-# Update deliberately when intentionally moving to a newer upstream installer.
-$uvPinnedHash = ""
-$scoopPinnedHash = ""
+# These are deliberate release pins. A missing or mismatched pin must refuse execution;
+# never turn a network response into code merely because the installer was launched.
+# Update deliberately when intentionally moving to a newer upstream installer, and
+# record the new hash in the release notes.
+$uvPinnedHash = "E08CFE98A992B95C04B5C8E8A3E61A5CF4565EF844C78770659A98BB8A4B1B31"
+$scoopPinnedHash = "94F983B190438311E006B957DB7C8422709E0BA62A6C2AC04E278164108F2512"
 
 function Step($m) { Write-Host "`n=== $m ===" -ForegroundColor Cyan }
 function Note($m) { Write-Host "  $m" }
@@ -47,12 +48,30 @@ function Prepend-UserPath($dir) {
     }
     if (($env:Path -split ';') -notcontains $dir) { $env:Path = "$dir;$env:Path" }
 }
-function Backup-File($path) {
+function Backup-File {
+    param(
+        [string]$path,
+        [string]$OwnershipManifestPath
+    )
     if (Test-Path -LiteralPath $path) {
         $bak = "$path.bak-$((Get-Date).ToString('yyyyMMdd-HHmmss'))"
         Copy-Item -LiteralPath $path -Destination $bak -Force
+        if ($OwnershipManifestPath) {
+            $manifestDir = Split-Path -Parent $OwnershipManifestPath
+            if ($manifestDir) { New-Item -ItemType Directory -Force -Path $manifestDir | Out-Null }
+            $backupHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $bak).Hash
+            [pscustomobject]@{
+                schema_version = 1
+                source_path = [System.IO.Path]::GetFullPath($path)
+                backup_path = [System.IO.Path]::GetFullPath($bak)
+                backup_sha256 = $backupHash
+                created_utc = (Get-Date).ToUniversalTime().ToString("o")
+            } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $OwnershipManifestPath -Encoding UTF8
+        }
         Note "backed up $(Split-Path -Leaf $path) -> $(Split-Path -Leaf $bak)"
+        return $bak
     }
+    return $null
 }
 function Get-FileHashText($path) {
     if (Test-Path -LiteralPath $path) { return (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash }
@@ -177,21 +196,20 @@ if (-not $ConfigOnly) {
     Step "uv"
     if (-not (Test-Path "$env:USERPROFILE\.local\bin\uv.exe")) {
         # EN-2: never pipe a remote script straight into the interpreter. Download to a
-        # file, verify its SHA-256 against a pinned value shipped in this repo, and only
-        # then execute it. Update $uvInstallerSha256 deliberately when bumping the pin.
+        # file, verify its SHA-256 against the release pin shipped in this repo, and only
+        # then execute it. A missing or mismatched pin is a hard refusal.
         try {
             $uvUrl = "https://astral.sh/uv/install.ps1"
             $uvTmp = Join-Path ([System.IO.Path]::GetTempPath()) ("uv-install-" + [guid]::NewGuid().ToString("n") + ".ps1")
             Invoke-WebRequest -UseBasicParsing -Uri $uvUrl -OutFile $uvTmp -ErrorAction Stop
             $uvHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $uvTmp).Hash
-            if ($uvPinnedHash -and ($uvHash -ne $uvPinnedHash)) {
+            if (-not $uvPinnedHash) {
+                [System.IO.File]::Delete($uvTmp)
+                Warn "uv installer has no SHA-256 pin - refused to run it"
+            } elseif ($uvHash -ne $uvPinnedHash) {
                 [System.IO.File]::Delete($uvTmp)
                 Warn "uv installer hash mismatch - refused to run it. expected=$uvPinnedHash actual=$uvHash"
             } else {
-                if (-not $uvPinnedHash) {
-                    Note "uv installer downloaded (sha256=$uvHash). No pin configured; running it."
-                    Note "To pin this, set `$uvPinnedHash in Setup-Autonomy.ps1 to that value."
-                }
                 & powershell -NoProfile -ExecutionPolicy Bypass -File $uvTmp
                 [System.IO.File]::Delete($uvTmp)
             }
@@ -207,19 +225,19 @@ if (-not $ConfigOnly) {
     Step "scoop"
     if (-not (Test-Path "$env:USERPROFILE\scoop\shims\scoop.ps1")) {
         # EN-2: download-then-verify rather than piping a live response into iex.
+        # A missing or mismatched pin is a hard refusal.
         try {
             $scoopUrl = "https://get.scoop.sh"
             $scoopTmp = Join-Path ([System.IO.Path]::GetTempPath()) ("scoop-install-" + [guid]::NewGuid().ToString("n") + ".ps1")
             Invoke-WebRequest -UseBasicParsing -Uri $scoopUrl -OutFile $scoopTmp -ErrorAction Stop
             $scoopHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $scoopTmp).Hash
-            if ($scoopPinnedHash -and ($scoopHash -ne $scoopPinnedHash)) {
+            if (-not $scoopPinnedHash) {
+                [System.IO.File]::Delete($scoopTmp)
+                Warn "scoop installer has no SHA-256 pin - refused to run it"
+            } elseif ($scoopHash -ne $scoopPinnedHash) {
                 [System.IO.File]::Delete($scoopTmp)
                 Warn "scoop installer hash mismatch - refused to run it. expected=$scoopPinnedHash actual=$scoopHash"
             } else {
-                if (-not $scoopPinnedHash) {
-                    Note "scoop installer downloaded (sha256=$scoopHash). No pin configured; running it."
-                    Note "To pin this, set `$scoopPinnedHash in Setup-Autonomy.ps1 to that value."
-                }
                 & powershell -NoProfile -ExecutionPolicy Bypass -File $scoopTmp
                 [System.IO.File]::Delete($scoopTmp)
             }
@@ -374,7 +392,7 @@ if (-not $SkipConfig) {
             if ((Normalize-ConfigText $raw) -eq (Normalize-ConfigText $generated)) {
                 Note "kit-managed config.toml already current"
             } else {
-                Backup-File $config
+                Backup-File $config (Join-Path $profileDir "config-backup-manifest.json")
                 Write-GeneratedConfig -path $config -coreText $core
                 Note "refreshed kit-managed config.toml"
             }

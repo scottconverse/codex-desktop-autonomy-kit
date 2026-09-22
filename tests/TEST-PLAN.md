@@ -16,9 +16,12 @@ A babysitting failure is Pole 1 breaking. An out-of-control failure is Pole 2 br
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-AutonomyKit.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-InstallSurface.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-ScriptSyntax.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-NoHardcodedPaths.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-HelperTrust.ps1
 ```
 
-PASS: every non-INFO check reports PASS.
+These are the same five scripts run by `Run-Tests.cmd` and the Windows GitHub Actions
+workflow. PASS: every non-INFO check reports PASS.
 
 `Test-InstallSurface.ps1` includes an isolated first-run config check that runs
 `Setup-Autonomy.ps1 -ConfigOnly -CodexRoot <temp>` and proves the generated config, staged
