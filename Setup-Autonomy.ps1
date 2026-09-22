@@ -24,10 +24,17 @@ param(
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $kit = $PSScriptRoot
-$kitVersion = "1.6.1"
+$kitVersion = "1.7.0"
 $configMarker = "# Codex Desktop Autonomy Kit managed config"
 $agentsMarkerBegin = "<!-- Codex Desktop Autonomy Kit: capability-section begin -->"
 $agentsMarkerEnd = "<!-- Codex Desktop Autonomy Kit: capability-section end -->"
+
+# EN-2: pinned SHA-256 hashes for the two remote bootstrap scripts the kit executes.
+# Empty = not pinned: the script is downloaded and run, and its hash is printed so you
+# can pin it. Set a value to enforce verification and refuse a mismatch.
+# Update deliberately when intentionally moving to a newer upstream installer.
+$uvPinnedHash = ""
+$scoopPinnedHash = ""
 
 function Step($m) { Write-Host "`n=== $m ===" -ForegroundColor Cyan }
 function Note($m) { Write-Host "  $m" }
@@ -85,11 +92,20 @@ function Install-AgentsCapabilityRule {
             Note "refreshed AGENTS.md capability rule (kit-authored block only)"
         }
     } else {
+        # EN-4: AGENTS.md is loaded into every session as high-priority instruction, so a
+        # very large file risks crowding other content out of the instruction window.
+        # Warn before growing it, and report the resulting size either way.
+        $preBytes = (Get-Item -LiteralPath $AgentsPath).Length
+        if ($preBytes -gt 20000) {
+            Warn ("AGENTS.md is already {0} bytes; appending the capability rule will grow it further" -f $preBytes)
+            Warn "consider whether every section is still earning its place in the instruction window"
+        }
         Backup-File $AgentsPath
         $sep = if ($raw.EndsWith("`n")) { "" } else { "`r`n" }
         $updated = $raw + $sep + "`r`n" + "$agentsMarkerBegin`r`n$section`r`n$agentsMarkerEnd" + "`r`n"
         Set-Content -LiteralPath $AgentsPath -Value $updated -Encoding UTF8 -NoNewline
-        Note "appended capability rule to existing AGENTS.md (your content preserved)"
+        $postBytes = (Get-Item -LiteralPath $AgentsPath).Length
+        Note ("appended capability rule to existing AGENTS.md (your content preserved; {0} -> {1} bytes)" -f $preBytes, $postBytes)
     }
 }
 function Resolve-HelperRoot {
@@ -160,8 +176,25 @@ if (-not $ConfigOnly) {
 
     Step "uv"
     if (-not (Test-Path "$env:USERPROFILE\.local\bin\uv.exe")) {
+        # EN-2: never pipe a remote script straight into the interpreter. Download to a
+        # file, verify its SHA-256 against a pinned value shipped in this repo, and only
+        # then execute it. Update $uvInstallerSha256 deliberately when bumping the pin.
         try {
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
+            $uvUrl = "https://astral.sh/uv/install.ps1"
+            $uvTmp = Join-Path ([System.IO.Path]::GetTempPath()) ("uv-install-" + [guid]::NewGuid().ToString("n") + ".ps1")
+            Invoke-WebRequest -UseBasicParsing -Uri $uvUrl -OutFile $uvTmp -ErrorAction Stop
+            $uvHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $uvTmp).Hash
+            if ($uvPinnedHash -and ($uvHash -ne $uvPinnedHash)) {
+                [System.IO.File]::Delete($uvTmp)
+                Warn "uv installer hash mismatch - refused to run it. expected=$uvPinnedHash actual=$uvHash"
+            } else {
+                if (-not $uvPinnedHash) {
+                    Note "uv installer downloaded (sha256=$uvHash). No pin configured; running it."
+                    Note "To pin this, set `$uvPinnedHash in Setup-Autonomy.ps1 to that value."
+                }
+                & powershell -NoProfile -ExecutionPolicy Bypass -File $uvTmp
+                [System.IO.File]::Delete($uvTmp)
+            }
         } catch {
             Warn "uv install failed: $($_.Exception.Message)"
         }
@@ -173,8 +206,23 @@ if (-not $ConfigOnly) {
 
     Step "scoop"
     if (-not (Test-Path "$env:USERPROFILE\scoop\shims\scoop.ps1")) {
+        # EN-2: download-then-verify rather than piping a live response into iex.
         try {
-            Invoke-Expression (Invoke-RestMethod -Uri "https://get.scoop.sh")
+            $scoopUrl = "https://get.scoop.sh"
+            $scoopTmp = Join-Path ([System.IO.Path]::GetTempPath()) ("scoop-install-" + [guid]::NewGuid().ToString("n") + ".ps1")
+            Invoke-WebRequest -UseBasicParsing -Uri $scoopUrl -OutFile $scoopTmp -ErrorAction Stop
+            $scoopHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $scoopTmp).Hash
+            if ($scoopPinnedHash -and ($scoopHash -ne $scoopPinnedHash)) {
+                [System.IO.File]::Delete($scoopTmp)
+                Warn "scoop installer hash mismatch - refused to run it. expected=$scoopPinnedHash actual=$scoopHash"
+            } else {
+                if (-not $scoopPinnedHash) {
+                    Note "scoop installer downloaded (sha256=$scoopHash). No pin configured; running it."
+                    Note "To pin this, set `$scoopPinnedHash in Setup-Autonomy.ps1 to that value."
+                }
+                & powershell -NoProfile -ExecutionPolicy Bypass -File $scoopTmp
+                [System.IO.File]::Delete($scoopTmp)
+            }
         } catch {
             Warn "scoop install failed: $($_.Exception.Message)"
         }
@@ -301,6 +349,26 @@ if (-not $SkipConfig) {
         # $ForceConfig is an explicit, deliberate override and is the only way to
         # replace a config that the kit did not generate or that the user has edited.
         $isProvablyKitOwned = $matchesGenerated -or $matchesPreviousKitRelease
+
+        # EN-3: -ForceConfig destroys whatever is in the file. Say so, and say what is
+        # about to be lost, before doing it. This is the flag a user reaches for when
+        # something looks stuck, so it must not be silent.
+        if ($ForceConfig -and -not $isProvablyKitOwned) {
+            $lostKeys = @()
+            foreach ($mline in ($raw -split "`r?`n")) {
+                $t = $mline.Trim()
+                if ($t -and -not $t.StartsWith('#') -and $t -match '^([A-Za-z0-9_.-]+)\s*=') {
+                    $lostKeys += $Matches[1]
+                }
+            }
+            Warn "-ForceConfig will replace your existing config.toml"
+            if ($lostKeys.Count) {
+                Warn ("  top-level keys that will be LOST: " + (($lostKeys | Select-Object -Unique) -join ', '))
+            } else {
+                Warn "  the existing file will be replaced entirely"
+            }
+            Note ("  a timestamped backup is written first: " + (Join-Path (Split-Path -Parent $config) (Split-Path -Leaf $config)) + ".bak-<timestamp>")
+        }
 
         if ($ForceConfig -or $isProvablyKitOwned) {
             if ((Normalize-ConfigText $raw) -eq (Normalize-ConfigText $generated)) {

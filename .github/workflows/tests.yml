@@ -1,0 +1,44 @@
+name: tests
+
+# The kit installs onto Windows machines and compares some files by SHA-256, so the
+# suite must run on Windows. This exists because a config-clobbering bug (v1.6.1 shipped
+# a fix for it) reached a release with a green local suite: the custom-config test used a
+# fixture that could not trigger the code path under test.
+#
+# Everything here runs read-only against a temp root; no workflow step installs tooling
+# or touches the runner's real ~/.codex.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PowerShell syntax check
+        shell: pwsh
+        run: ./tests/Test-ScriptSyntax.ps1
+
+      - name: No hardcoded user paths
+        shell: pwsh
+        run: ./tests/Test-NoHardcodedPaths.ps1
+
+      - name: Install surface and config ownership
+        shell: pwsh
+        run: ./tests/Test-InstallSurface.ps1
+
+      - name: Elevated helper trusted-path gate (behavioural)
+        shell: pwsh
+        run: ./tests/Test-HelperTrust.ps1
+
+      - name: Capability harness
+        shell: pwsh
+        run: ./tests/Test-AutonomyKit.ps1

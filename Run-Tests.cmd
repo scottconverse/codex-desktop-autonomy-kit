@@ -10,6 +10,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tests\Test-InstallSurf
 if errorlevel 1 goto fail
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tests\Test-ScriptSyntax.ps1"
 if errorlevel 1 goto fail
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tests\Test-HelperTrust.ps1"
+if errorlevel 1 goto fail
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tests\Test-AutonomyKit.ps1"
 if errorlevel 1 goto fail
 echo.

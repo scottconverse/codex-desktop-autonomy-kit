@@ -28,21 +28,79 @@ function Assert-Admin {
     }
 }
 
+function Resolve-ReparseTarget {
+    # Follow ONE reparse point to its target. Returns $null when the path is not a link.
+    # Throws when it IS a link but its target cannot be read -- fail closed.
+    param([string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) { return $null }
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    $isLink = $item.LinkType -or ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
+    if (-not $isLink) { return $null }
+
+    $target = $null
+    try { $target = @($item.Target)[0] } catch { }
+    if (-not $target) {
+        throw "Refusing path with an unresolvable reparse point: $Path"
+    }
+    if ([System.IO.Path]::IsPathRooted($target)) {
+        return [System.IO.Path]::GetFullPath($target)
+    }
+    # Relative targets resolve against the LINK'S parent, never the current directory.
+    return [System.IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $Path) $target))
+}
+
+function Get-RealPath {
+    # Resolve reparse points (junctions, symlinks) for EVERY component of the path.
+    #
+    # Two attacks this must defeat, both of which the previous leaf-only check allowed:
+    #   1. A junction on a PARENT directory. The leaf file is not a link, so a leaf test
+    #      passes while the effective location is somewhere else entirely.
+    #   2. CHAINED junctions (a link pointing at another link). After following one link
+    #      the walk must RE-CHECK the destination, or the second hop is never inspected.
+    #
+    # The walk therefore re-resolves its cursor after every hop until it stops changing.
+    # Fails CLOSED: any resolution error throws rather than returning an unresolved path.
+    param([string]$Path)
+
+    $full = [System.IO.Path]::GetFullPath($Path)
+    $root = [System.IO.Path]::GetPathRoot($full)
+    $rest = $full.Substring($root.Length)
+    $parts = $rest -split '[\\/]' | Where-Object { $_ -ne '' }
+
+    $cursor = $root.TrimEnd('\')
+    if ($cursor -eq '') { $cursor = '\' }
+
+    # Resolve the starting root itself (a drive could be a symlink).
+    $hop = Resolve-ReparseTarget -Path $cursor
+    if ($hop) { $cursor = $hop }
+
+    foreach ($part in $parts) {
+        $cursor = Join-Path $cursor $part
+
+        # Follow links repeatedly until the location is stable. A bound prevents an
+        # infinite loop on a cyclic link chain.
+        $guard = 0
+        while ($guard -lt 32) {
+            $guard++
+            $hop = Resolve-ReparseTarget -Path $cursor
+            if (-not $hop) { break }
+            $cursor = $hop
+        }
+        if ($guard -ge 32) {
+            throw "Refusing path with a cyclic or excessively deep reparse chain: $Path"
+        }
+    }
+
+    return [System.IO.Path]::GetFullPath($cursor)
+}
+
 function Assert-TrustedPath {
     param([string]$Path)
-    # Canonicalize first: resolve symlinks/junctions so a link that lives under an
-    # allowed root but points outside it cannot pass a string-prefix check. This
-    # hardening was not exercised against a live symlink; it is defensive.
-    $resolved = [System.IO.Path]::GetFullPath($Path)
-    if (Test-Path -LiteralPath $resolved) {
-        try {
-            $item = Get-Item -LiteralPath $resolved -Force
-            if ($item.LinkType) {
-                $target = @($item.Target)[0]
-                if ($target) { $resolved = [System.IO.Path]::GetFullPath($target) }
-            }
-        } catch { }
-    }
+
+    # Resolve every component; throws if a reparse point cannot be resolved.
+    $resolved = Get-RealPath -Path $Path
+
     # Resolve the running user's actual profile instead of assuming C:\Users\<name>.
     # C:\dev is the helper's own development root.
     $trustedRoots = @(
@@ -51,8 +109,13 @@ function Assert-TrustedPath {
         "$env:USERPROFILE\.codex\",
         "$env:USERPROFILE\AppData\Local\Temp\CodexElevatedHelper\"
     )
+
+    # Compare the REAL path against REAL roots, so a trusted root that is itself a
+    # reparse point cannot be used to smuggle an outside location in.
     foreach ($root in $trustedRoots) {
-        if ($resolved.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $realRoot = Get-RealPath -Path $root
+        if (-not $realRoot.EndsWith("\")) { $realRoot += "\" }
+        if ($resolved.StartsWith($realRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
             return $resolved
         }
     }
@@ -222,6 +285,10 @@ function Invoke-HelperAction {
         }
     }
 }
+
+# Allow the file to be dot-sourced for testing without executing the helper body.
+# A test sets $env:CODEZ_HELPER_SOURCE_ONLY = "1" and gets the functions only.
+if ($env:CODEX_HELPER_SOURCE_ONLY -eq "1") { return }
 
 Assert-Admin
 $Root = Resolve-HelperRoot -Explicit $Root

@@ -109,7 +109,7 @@ try {
 } catch { Add-Result "setup_custom_config_guard" "FAIL" $_.Exception.Message }
 
 try {
-    $version = '1.6.1'
+    $version = '1.7.0'
     $surfaces = @(
         'README.md',
         'CHANGELOG.md',

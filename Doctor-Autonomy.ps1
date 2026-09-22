@@ -3,10 +3,13 @@
     Read-only status dashboard for the Codex Desktop Autonomy Kit installation.
 #>
 [CmdletBinding()]
-param()
+param(
+    [string]$CodexRoot = "$env:USERPROFILE\.codex"
+)
 
 $kit = $PSScriptRoot
-$cx = "$env:USERPROFILE\.codex"
+$cx = $CodexRoot
+$isDefaultRoot = ($cx -eq "$env:USERPROFILE\.codex")
 $configMarker = "# Codex Desktop Autonomy Kit managed config"
 
 function Section($title) { Write-Host "`n=== $title ===" -ForegroundColor Cyan }
@@ -84,6 +87,15 @@ if (Test-Path -LiteralPath $agents) {
 L "capability-check skill" $(if (Test-Path -LiteralPath $skillFile) { $skillFile } else { '(missing)' })
 
 Section "Elevated dev helper"
+# UX-1 / QA-3: the helper task is machine-global, but the config layer is per-root.
+# Only report the helper when we are auditing the machine's real Codex root, so the
+# report never mixes two different installations into one picture.
+if (-not $isDefaultRoot) {
+    L "helper state" "(not reported - auditing a non-default root)"
+    Write-Host ""
+    return
+}
+
 $h = Get-ScheduledTask -TaskName "CodexElevatedDevHelper" -ErrorAction SilentlyContinue
 $helperRoot = 'C:\dev\CodexElevatedHelper'
 $helperPointer = Join-Path $profileDir "helper-root.json"

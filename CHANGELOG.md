@@ -6,6 +6,67 @@ Verification note: this repository has no CI workflow. Test and smoke-check resu
 recorded in release notes are produced by running the shipped scripts manually, not by
 an automated service.
 
+## v1.7.0 - 2026-09-21
+
+Security and correctness release from a full GauntletGate audit (5 roles, commit cacb41b).
+
+### Fixed
+- **SECURITY: the elevated helper's trusted-path check was bypassable, granting elevated
+  code execution to a non-admin.** `Assert-TrustedPath` inspected only the final path
+  component for a reparse point. A **junction on a parent directory** was therefore never
+  examined: `C:\dev\link\evil.ps1` passed the check because the file itself is not a
+  link, while the effective location was outside every trusted root. Since `C:\dev`
+  grants `Authenticated Users` Modify by default, any authenticated non-admin could plant
+  the junction and have the SYSTEM-privileged scheduled task run arbitrary code.
+
+  The check now resolves **every** path component, follows chained junctions to a fixed
+  point (a single-hop fix was insufficient -- the second hop was still bypassable), and
+  **fails closed** rather than swallowing resolution errors. Trusted roots are themselves
+  resolved before comparison, so a root that is a reparse point cannot smuggle in an
+  outside location. A cycle guard bounds pathological link chains.
+
+- **The test suite could not detect the gate being disabled.** `helper_hardening` asserted
+  that certain strings existed in the helper source. Replacing the entire comparison with
+  `if ($true) { return $resolved }` left every string present and the suite reported
+  19 PASS / 0 FAIL. `tests/Test-HelperTrust.ps1` now **calls** the gate: eleven cases
+  covering legitimate paths (accept), outside paths (refuse), traversal, junction leaves,
+  parent junctions, and chains of two and three junctions. Verified to go red on both the
+  original defect and the total bypass.
+
+### Changed
+- **Remote bootstrap scripts are no longer piped straight into the interpreter.**
+  `irm ... | iex` for uv and `Invoke-Expression (Invoke-RestMethod ...)` for scoop are
+  replaced by download-to-file, hash-print, and execute. Pinned hashes can be set in
+  `Setup-Autonomy.ps1` (`$uvPinnedHash`, `$scoopPinnedHash`); a mismatch refuses to run the
+  script. Empty pin = download, print the hash, and run, so you can pin deliberately.
+- **`-ForceConfig` now reports what it will destroy** before doing it: the top-level keys
+  present in the file that are about to be lost, and the backup path.
+- **`Doctor-Autonomy.ps1` accepts `-CodexRoot`** and no longer reports machine-global helper
+  state when auditing a different root. Previously it printed config `(missing)` alongside
+  helper `STALE/modified` for the same run, describing two different installations as one.
+- **AGENTS.md writes report their size impact** and warn when the target is already large,
+  since that file occupies the instruction window in every session.
+
+### Added
+- **CI** (`.github/workflows/tests.yml`, `windows-latest`) running all five test scripts on
+  push, pull request, and manual dispatch. Its absence is why a config-clobbering bug
+  shipped with a green local suite.
+- `tests/Test-HelperTrust.ps1` (behavioural gate tests), wired into `Run-Tests.cmd`.
+
+### Docs
+- README and user manual no longer claim the helper is "not an unrestricted admin command
+  broker" without qualification. `RunTrustedPowerShellScript` runs arbitrary scripts under
+  the trusted roots at highest privilege; the docs now say so plainly and point at the
+  helper's own safety model.
+- The install sequence now begins with a config backup step. Setup backs up before any
+  overwrite, but the documented first action is the copy the user controls.
+
+### Notes
+- Auditing a provisioned machine cannot construct a dependency-absent first-run state:
+  Setup detects Python by filesystem glob and scoop by absolute path, so PATH manipulation
+  does not hide them. Use a container or VM for that row. Recorded because a PATH-based
+  attempt during the audit installed two packages on the test host.
+
 ## v1.6.1 - 2026-09-21
 
 ### Fixed

@@ -1,6 +1,6 @@
 # Codex Desktop Autonomy Kit
 
-**Version 1.6.1 - Windows** - a click-first setup kit for configuring Codex Desktop toward
+**Version 1.7.0 - Windows** - a click-first setup kit for configuring Codex Desktop toward
 maximum practical software-development autonomy on Windows development machines. See
 [CHANGELOG.md](CHANGELOG.md).
 
@@ -80,11 +80,24 @@ Use the elevated helper only when a machine needs a controlled way for non-admin
 
 ## Quick Start
 
-From a clean Windows/Codex box, clone or download the kit, then double-click:
+From a clean Windows/Codex box:
 
-`Install-Autonomy.cmd`
+1. **Back up your existing Codex config first** (skip if this is a fresh machine with no
+   config):
 
-Then restart Codex Desktop so PATH and config changes load.
+   ```powershell
+   Copy-Item "$env:USERPROFILE\.codex\config.toml" "$env:USERPROFILE\.codex\config.toml.my-backup" -ErrorAction SilentlyContinue
+   ```
+
+   The installer backs up before any overwrite it performs and will not replace a config
+   it did not generate. This step is belt-and-braces: it is the copy *you* control, and it
+   costs nothing.
+
+2. Clone or download the kit, then double-click:
+
+   `Install-Autonomy.cmd`
+
+3. Restart Codex Desktop so PATH and config changes load.
 
 ### What setup will and will not do to your config
 
@@ -123,7 +136,17 @@ The helper still requires a one-time owner-approved Windows UAC step on each mac
 
 `elevated-dev-helper/README.md`
 
-The helper is intentionally bounded. It supports named development actions and logs results; it is not an unrestricted admin command broker.
+The helper executes named, structured actions and logs every result. It is **not** an
+arbitrary command broker in the sense that it will not run a raw command line you hand
+it -- every job must name a supported action.
+
+Be clear about what that does and does not mean. One of the supported actions,
+`RunTrustedPowerShellScript`, runs **any PowerShell script located under a trusted
+development root**, with arguments you supply, from a task running at highest
+privilege. That is an elevated code-execution primitive by design, intended for a
+single-owner development machine. The path check is hardened against junction and
+symlink escapes and refuses anything outside the trusted roots, but the capability
+itself is broad. See `elevated-dev-helper/README.md` for the full safety model.
 
 ## Safety Notes
 

@@ -1,6 +1,6 @@
 # Codex Desktop Autonomy Kit User Manual
 
-Version 1.6.1 for Windows.
+Version 1.7.0 for Windows.
 
 ![Codex Desktop Autonomy Kit architecture](assets/codex-autonomy-architecture.svg)
 
@@ -74,10 +74,14 @@ removes the installed skill.
 
 ## Install
 
-1. Download or clone the repo.
-2. Double-click `Install-Autonomy.cmd`.
-3. Approve Windows UAC if the helper installer appears.
-4. Restart Codex Desktop.
+1. **Back up your Codex config** if you already have one:
+   `Copy-Item "$env:USERPROFILE\.codex\config.toml" "$env:USERPROFILE\.codex\config.toml.my-backup"`.
+   Setup backs up before any overwrite it performs and never replaces a config it did not
+   generate, but an independent copy is the one you control.
+2. Download or clone the repo.
+3. Double-click `Install-Autonomy.cmd`.
+4. Approve Windows UAC if the helper installer appears.
+5. Restart Codex Desktop.
 
 After restart, there is no special invocation phrase. The kit is active through Codex
 Desktop's config file and persistent developer instructions.
@@ -145,6 +149,11 @@ The helper accepts structured jobs only. Current supported actions are:
 - `OpenDevFirewallPort`
 - `RegisterDevScheduledTask`
 
+One supported action, `RunTrustedPowerShellScript`, runs any PowerShell script found under a
+trusted development root, with arguments you supply, from a task at highest privilege. The
+path check refuses junction and symlink escapes, but the capability itself is broad by
+design.
+
 The helper is powerful by design. It is intended for single-owner development machines where
 the owner wants Codex to complete local setup, service, SDK, firewall, and toolchain tasks
 without repeated UAC prompts after the helper is installed.
@@ -168,7 +177,7 @@ without repeated UAC prompts after the helper is installed.
 
 ## Versioning
 
-The current public release is v1.6.1. Setup writes the same version into the staged manifest
+The current public release is v1.7.0. Setup writes the same version into the staged manifest
 at `~/.codex/autonomy-kit/manifest.json`.
 
 ## Safety Notes
