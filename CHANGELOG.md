@@ -23,6 +23,8 @@ trusted-path behavior with the documented single-owner lexical trust model.
   fails Setup with a precise error.
 - Windows child-process argument serialization now preserves empty values, embedded quotes,
   whitespace, and trailing backslashes.
+- Uninstall now reads the helper pointer and removes a recorded custom-named elevated task
+  instead of looking up only the default `CodexElevatedDevHelper` name.
 
 ### Changed
 - The Codex helper now matches the Claude helper's practical single-owner model: trusted

@@ -277,6 +277,8 @@ try {
         $uninstall -match 'remove kit-managed config\.toml' -and
         $uninstall -match 'custom config\.toml found' -and
         $uninstall -match 'config-backup-manifest\.json' -and
+        $uninstall -match 'helper-root\.json' -and
+        $uninstall -match '\$helperPointer\.task_name' -and
         $uninstall -match 'Restore-KitBackup' -and
         $uninstall -notmatch 'Restore-LatestBak'
     )

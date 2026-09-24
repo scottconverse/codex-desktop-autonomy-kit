@@ -146,6 +146,9 @@ It does not remove Python, Node.js, GitHub CLI, ripgrep, jq, SQLite, Playwright,
 helper files under the helper install root (default `C:\dev\CodexElevatedHelper`). Those
 are intentionally left alone because they may be useful outside this kit. The scheduled
 task is removed only if you answer yes to the separate prompt.
+For a helper installed with a custom task name, uninstall reads that name from
+`~/.codex/autonomy-kit/helper-root.json` and removes the recorded task rather than assuming
+the default.
 
 ## Elevated Helper
 

@@ -178,6 +178,37 @@ exit /b 0
     } catch {
         Add-Result "windows_argument_serialization" "FAIL" $_.Exception.Message
     }
+
+    # A custom helper task must be the one uninstall targets. Execute the actual
+    # uninstaller under -WhatIf with mocked task cmdlets and inspect the lookup receipt.
+    try {
+        $uninstallRoot = Join-Path $scratch "uninstall-profile"
+        $uninstallPointerDir = Join-Path $uninstallRoot "autonomy-kit"
+        New-Item -ItemType Directory -Force -Path $uninstallPointerDir | Out-Null
+        $uninstallTask = "CustomUninstallTask-" + [guid]::NewGuid().ToString("n")
+        @{ install_root = (Join-Path $scratch "unused-helper"); task_name = $uninstallTask } |
+            ConvertTo-Json | Set-Content -LiteralPath (Join-Path $uninstallPointerDir "helper-root.json") -Encoding UTF8
+        $lookupReceipt = Join-Path $scratch "uninstall-task-lookup.txt"
+        $uninstallHarness = Join-Path $scratch "uninstall-harness.ps1"
+        $uninstallPath = Join-Path $kit "Uninstall-Autonomy.ps1"
+        @'
+param($UninstallPath,$CodexRoot,$Receipt)
+function Get-ScheduledTask {
+    param([string]$TaskName)
+    [System.IO.File]::WriteAllText($Receipt, $TaskName)
+    return [pscustomobject]@{ TaskName = $TaskName; State = "Ready" }
+}
+function Stop-ScheduledTask { throw "Stop-ScheduledTask must not run under WhatIf" }
+function Unregister-ScheduledTask { throw "Unregister-ScheduledTask must not run under WhatIf" }
+. $UninstallPath -RemoveHelper -CodexRoot $CodexRoot -WhatIf
+'@ | Set-Content -LiteralPath $uninstallHarness -Encoding UTF8
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $uninstallHarness $uninstallPath $uninstallRoot $lookupReceipt *> $null
+        $ok = ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $lookupReceipt) -and
+               [System.IO.File]::ReadAllText($lookupReceipt) -eq $uninstallTask)
+        Add-Result "uninstall_custom_task_pointer" $(if ($ok) { "PASS" } else { "FAIL" }) "uninstaller looked up recorded task: $uninstallTask"
+    } catch {
+        Add-Result "uninstall_custom_task_pointer" "FAIL" $_.Exception.Message
+    }
 } finally {
     if (Test-Path -LiteralPath $scratch) { [System.IO.Directory]::Delete($scratch, $true) }
 }

@@ -83,16 +83,29 @@ function Restore-KitBackup($path) {
     return 'restored'
 }
 
+$helperTaskName = "CodexElevatedDevHelper"
+$helperPointerPath = Join-Path (Join-Path $cx "autonomy-kit") "helper-root.json"
+if (Test-Path -LiteralPath $helperPointerPath -PathType Leaf) {
+    try {
+        $helperPointer = Get-Content -LiteralPath $helperPointerPath -Raw | ConvertFrom-Json
+        if (-not [string]::IsNullOrWhiteSpace([string]$helperPointer.task_name)) {
+            $helperTaskName = [string]$helperPointer.task_name
+        }
+    } catch {
+        Write-Warning "helper pointer could not be read; falling back to the default task name: $($_.Exception.Message)"
+    }
+}
+
 if ($RemoveHelper) {
-    $h = Get-ScheduledTask -TaskName "CodexElevatedDevHelper" -ErrorAction SilentlyContinue
+    $h = Get-ScheduledTask -TaskName $helperTaskName -ErrorAction SilentlyContinue
     if ($h) {
-        if ($PSCmdlet.ShouldProcess("CodexElevatedDevHelper", "Unregister-ScheduledTask")) {
-            Stop-ScheduledTask -TaskName "CodexElevatedDevHelper" -ErrorAction SilentlyContinue
-            Unregister-ScheduledTask -TaskName "CodexElevatedDevHelper" -Confirm:$false
-            Write-Host "removed scheduled task: CodexElevatedDevHelper"
+        if ($PSCmdlet.ShouldProcess($helperTaskName, "Unregister-ScheduledTask")) {
+            Stop-ScheduledTask -TaskName $helperTaskName -ErrorAction SilentlyContinue
+            Unregister-ScheduledTask -TaskName $helperTaskName -Confirm:$false
+            Write-Host "removed scheduled task: $helperTaskName"
         }
     } else {
-        Write-Host "CodexElevatedDevHelper not present - skip"
+        Write-Host "$helperTaskName not present - skip"
     }
 }
 
