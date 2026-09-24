@@ -2,9 +2,35 @@
 
 All notable changes to the Codex Desktop Autonomy Kit. Dates are UTC.
 
-Verification note: `.github/workflows/tests.yml` runs the five shipped PowerShell checks on
+Verification note: `.github/workflows/tests.yml` runs the six shipped PowerShell checks on
 Windows for pushes to `master`, pull requests, and manual dispatch. Local audit reports
 distinguish scripts run by the auditor from conclusions produced by GitHub Actions.
+
+## v1.8.0 - 2026-09-22
+
+Reliability and helper-parity release. This version supersedes v1.7.0's reparse-resolving
+trusted-path behavior with the documented single-owner lexical trust model.
+
+### Fixed
+- **Overlapping elevated-helper requests can no longer be stranded.** Invokers publish jobs
+  by atomically renaming a completed temporary file, the scheduled task uses the Windows
+  `Queue` multiple-instance policy, and each worker drains until the queue is stable. The
+  regression suite inserts a second request while a slow first request is executing and
+  requires both results plus an empty queue.
+- **Setup no longer hides helper installer failures.** It captures and checks the elevated
+  launcher's exit code, then verifies the expected task and SHA-256 parity of both installed
+  scripts. A declined UAC prompt, non-zero exit, missing task, or stale post-install file now
+  fails Setup with a precise error.
+- Windows child-process argument serialization now preserves empty values, embedded quotes,
+  whitespace, and trailing backslashes.
+- Uninstall now reads the helper pointer and removes a recorded custom-named elevated task
+  instead of looking up only the default `CodexElevatedDevHelper` name.
+
+### Changed
+- The Codex helper now matches the Claude helper's practical single-owner model: trusted
+  paths are normalized lexically and junction/symlink targets are not resolved or censored.
+- The behavioral suite executes custom root/task discovery through the real invoker, tests
+  queue arrival during active work, and exercises both successful and failed Setup refreshes.
 
 ## v1.7.0 - 2026-09-21
 

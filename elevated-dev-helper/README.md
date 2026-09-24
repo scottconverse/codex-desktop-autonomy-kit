@@ -1,18 +1,34 @@
 # Codex Elevated Development Helper
 
-This kit is a reusable Windows helper pattern for machines where Codex Desktop cannot launch
-its shell with an administrator token.
+This is a scheduled-task bridge for owner-authorized administrator work from a normal Codex
+Desktop process. The task runs `ElevatedDevHelper.ps1` at highest privilege, accepts
+structured JSON jobs, and writes result and audit logs.
 
-## What It Does
+## Practical capability
 
-- Installs a Windows Scheduled Task named `CodexElevatedDevHelper`.
-- The task runs `ElevatedDevHelper.ps1` with highest privileges.
-- Codex or a normal user process can queue structured JSON jobs and trigger the task.
-- The helper runs supported development actions and writes JSON results/logs.
+`RunTrustedPowerShellScript` runs any owner-authorized PowerShell script located under a
+trusted lexical root with full local-administrator rights and no per-action UAC prompt.
+That includes HKLM and Program Files writes, MSI and other installers, services, firewall
+rules, scheduled tasks, and any other operation available to a local administrator.
 
-## What It Does Not Do
+The named actions, queue, and logs are transport and audit mechanisms. They are not a claim
+that the capability is narrow. `RunTrustedPowerShellScript` is arbitrary elevated PowerShell
+from a trusted root; do not add assistant-selected approval gates to owner-authorized work.
 
-This is not an unrestricted admin command broker. It intentionally refuses arbitrary commands. It supports named development actions only:
+Trusted roots are `C:\dev\`, `$env:USERPROFILE\Documents\Codex\`,
+`$env:USERPROFILE\.codex\`, and
+`$env:USERPROFILE\AppData\Local\Temp\CodexElevatedHelper\`. Trust is based on a normalized
+lexical full-path prefix, matching the Claude helper. Junction and symlink paths lexically
+beneath a trusted root are accepted even when their targets are elsewhere. Direct
+outside-root paths, `..` escapes after normalization, and prefix collisions such as
+`C:\developer\` or `Documents\CodexOutside\` are rejected. There is deliberately no
+realpath or reparse-point censorship.
+
+Because the trusted roots are user-writable, any process running as that user can place a
+script there and use the installed task to obtain administrator execution. That is the
+accepted tradeoff for a single-owner development machine; this helper is not a sandbox.
+
+## Actions
 
 - `CheckAdmin`
 - `WingetInstall`
@@ -24,57 +40,49 @@ This is not an unrestricted admin command broker. It intentionally refuses arbit
 - `OpenDevFirewallPort`
 - `RegisterDevScheduledTask`
 
-## Install
+## Install and discovery
 
-The one-time installer must be launched from an elevated PowerShell session because Windows UAC controls creation of highest-privilege scheduled tasks.
+Double-click `Install-ElevatedDevHelper-AsAdmin.cmd` and approve the one-time Windows UAC
+prompt. The default task is `CodexElevatedDevHelper` and the default install root is
+`C:\dev\CodexElevatedHelper`, but the PowerShell installer supports custom `-InstallRoot`
+and `-TaskName` values.
 
-For a click-driven install on this machine, double-click `Install-ElevatedDevHelper-AsAdmin.cmd` and approve the Windows UAC prompt. The launcher opens an elevated PowerShell process, runs the installer, waits for the self-test, and closes the elevated window when finished.
+The installer copies both `ElevatedDevHelper.ps1` and `Invoke-ElevatedDevHelper.ps1` into
+the install root. It records `install_root`, `task_name`, `helper_script`, and
+`invoker_script` in both `install-state.json` and
+`~/.codex/autonomy-kit/helper-root.json`.
 
-The elevated installer window closes after completion. A successful install writes an install log and a self-test result where `is_admin` is `true`.
+Callers should read that pointer and invoke the installed script deterministically:
 
-If a diagnostic shows `Elevated=False` and `Integrity=Medium Mandatory Level`, that diagnostic was run in a non-elevated process. That is expected for normal Codex Desktop shells, but not for the elevated installer window or the scheduled-task helper result.
+```powershell
+$pointerPath = Join-Path $env:USERPROFILE ".codex\autonomy-kit\helper-root.json"
+$pointer = Get-Content -LiteralPath $pointerPath -Raw | ConvertFrom-Json
+$invoker = if ($pointer.invoker_script) {
+    [string]$pointer.invoker_script
+} else {
+    Join-Path ([string]$pointer.install_root) "Invoke-ElevatedDevHelper.ps1"
+}
+& $invoker -Action CheckAdmin
+```
 
-After installation, the helper root defaults to:
+The installed invoker discovers the recorded custom root and task name unless either is
+passed explicitly. Results appear below `<install_root>\done`; failures appear below
+`<install_root>\failed`; JSONL audit events appear below `<install_root>\logs`.
 
-`C:\dev\CodexElevatedHelper`
+The invoker writes each job completely to a temporary file and then atomically renames it to
+`.json`. The helper task uses the `Queue` multiple-instance policy and each worker drains
+until the queue is stable. Together those guarantees prevent a request submitted during an
+active run from being read partially or left waiting for an unrelated future trigger.
 
-The queue, result, failure, and log folders are:
+Setup detects a missing or stale installed helper and a missing or stale installed invoker.
+Use `Refresh-ElevatedHelper.cmd` or setup's refresh flow to update them. The installer runs
+an elevated `CheckAdmin` self-test and records its result. Setup checks the elevated
+installer's exit code and then verifies the task plus both installed script hashes before it
+reports success.
 
-- `C:\dev\CodexElevatedHelper\queue`
-- `C:\dev\CodexElevatedHelper\done`
-- `C:\dev\CodexElevatedHelper\failed`
-- `C:\dev\CodexElevatedHelper\logs`
+## Operating boundary
 
-The installer also writes:
-
-- `C:\dev\CodexElevatedHelper\install-log.txt`
-- `C:\dev\CodexElevatedHelper\install-state.json`
-
-Use `Test-ElevationState.ps1` only to inspect the process where it is launched. It does not prove the scheduled task helper is elevated unless it is run by the helper itself.
-
-## Reuse On Other Machines
-
-Copy this folder to another personal development machine, review the scripts, then perform the
-same one-time elevated setup there. Trusted script roots resolve from the current
-`$env:USERPROFILE` plus `C:\dev`, so the helper is not tied to one Windows account name. The
-GEN5 addendum can be appended to that machine's persistent Codex instructions.
-
-## Notes On Inline Elevation
-
-Prompt text cannot bypass Windows UAC, app policy, or Codex Desktop's enforced permissions.
-If the desktop app cannot run its inline shell elevated, the correct path is this helper: a
-one-time owner-approved scheduled task that runs with highest privileges and accepts bounded,
-structured development jobs.
-
-## Safety Model
-
-The helper accepts only structured jobs and known action names. It logs every job start,
-success, and failure. It restricts trusted script execution to local development roots. It is
-intended for reversible development infrastructure, not destructive system administration.
-
-`RunTrustedPowerShellScript` intentionally creates a no-per-action-UAC local-admin path for
-scripts under trusted development roots. That is the accepted single-owner development trade:
-powerful enough for SDKs, installers, services, and firewall checks, but still structured and
-logged.
-
-Expand the action list only when a real development task needs it, and keep each action structured instead of adding a generic unrestricted command action.
+The helper supplies capability, not authorization. Actions still come from the owner's task
+and higher-priority rules. It does not silently authorize destructive, credential-sensitive,
+internet-exposed, or otherwise unrequested work. Conversely, its queue format must not be
+misrepresented as a Codex-only restriction on owner-authorized administrator operations.

@@ -1,6 +1,6 @@
 # Codex Desktop Autonomy Kit
 
-**Version 1.7.0 - Windows** - a click-first setup kit for configuring Codex Desktop toward
+**Version 1.8.0 - Windows** - a click-first setup kit for configuring Codex Desktop toward
 maximum practical software-development autonomy on Windows development machines. See
 [CHANGELOG.md](CHANGELOG.md).
 
@@ -13,7 +13,7 @@ maximum practical software-development autonomy on Windows development machines.
 Codex Desktop Autonomy Kit turns a Windows Codex Desktop install into a more capable local
 development collaborator. It stages persistent Codex instructions, configures the Codex
 sandbox for full local development access, installs common user-scope tooling, and optionally
-installs a bounded elevated helper for development tasks that need administrator rights.
+installs an audited elevated helper that provides owner-authorized local-administrator execution.
 
 It also installs a capability self-assessment rule and skill. The most common failure of an
 autonomous coding agent is not a missing permission -- it is inventing one, then stopping to
@@ -43,7 +43,7 @@ refresh, then restart Codex Desktop.
 - `GEN5-Codex-Desktop-Autonomous-Software-Development.md` - full/depth Codex instruction
   profile for broad or high-blast-radius work.
 - `config.autonomy.example.toml` - example Codex autonomy config for manual merge.
-- `elevated-dev-helper/` - reusable bounded elevated-helper pattern for Windows machines where Codex Desktop cannot launch its shell with an admin token.
+- `elevated-dev-helper/` - reusable, audited full-administrator helper for Windows machines where Codex Desktop cannot launch its shell with an admin token.
 - `tests/` - capability harness, behavioral test plan, and hardcoded-path regression guard.
 - `skills/capability-check/` - shipped skill that makes an agent probe its own access instead of asserting limits it never tested.
 - `templates/AGENTS-capability-section.md` - the marker-delimited capability rule Setup appends to your global `AGENTS.md`.
@@ -77,7 +77,9 @@ retry, verify, and clean up ordinary development work within higher-priority rul
 OS/app boundaries. The core points to GEN5 for deeper operating detail when the task has more
 blast radius.
 
-Use the elevated helper only when a machine needs a controlled way for non-admin Codex Desktop sessions to trigger supported elevated development infrastructure actions.
+Use the elevated helper when a non-admin Codex Desktop session needs owner-authorized
+local-administrator execution. Structured jobs and logs are its transport and audit trail,
+not a limit on what a trusted PowerShell script can do.
 
 ## Quick Start
 
@@ -136,7 +138,9 @@ skill are installed.
 
 If the elevated helper is stale, the installer offers to refresh it in the same flow. Approve
 the Windows administrator prompt when you choose yes. The elevated installer window closes
-after the helper install and self-test complete.
+after the helper install and self-test complete. Setup treats a declined UAC prompt, a
+non-zero installer exit, a missing task, or a post-install file-hash mismatch as a failed
+install; it does not report success and continue.
 
 ## Elevated Helper Setup
 
@@ -144,17 +148,26 @@ The helper still requires a one-time owner-approved Windows UAC step on each mac
 
 `elevated-dev-helper/README.md`
 
-The helper executes named, structured actions and logs every result. It is **not** an
-arbitrary command broker in the sense that it will not run a raw command line you hand
-it -- every job must name a supported action.
+The helper executes named, structured actions and logs every result. Invoke the installed
+copy by reading `~/.codex/autonomy-kit/helper-root.json` and running its `invoker_script`
+value (or `<install_root>\Invoke-ElevatedDevHelper.ps1` as the fallback). This preserves
+custom install roots and task names end to end.
+
+The invoker publishes each request atomically, and the scheduled task queues overlapping
+starts instead of dropping them. The worker drains arrivals until the queue is stable, so a
+job submitted while another job is running is not left stranded until some future trigger.
 
 Be clear about what that does and does not mean. One of the supported actions,
 `RunTrustedPowerShellScript`, runs **any PowerShell script located under a trusted
 development root**, with arguments you supply, from a task running at highest
-privilege. That is an elevated code-execution primitive by design, intended for a
-single-owner development machine. The path check is hardened against junction and
-symlink escapes and refuses anything outside the trusted roots, but the capability
-itself is broad. See `elevated-dev-helper/README.md` for the full safety model.
+privilege. It provides full local-administrator execution: trusted scripts can modify HKLM
+and Program Files, run MSI and other installers, manage services, firewall rules, scheduled
+tasks, and perform other administrator operations. Trust uses normalized lexical roots
+(`C:\dev`, `Documents\Codex`, `.codex`, and the helper temp root), deliberately without
+realpath/reparse censorship. Junction and symlink paths lexically beneath those roots are
+accepted; direct outside-root and prefix-collision paths are refused. This is an elevated
+code-execution primitive for a single-owner development machine. See
+`elevated-dev-helper/README.md` for the full safety model.
 
 ## Safety Notes
 

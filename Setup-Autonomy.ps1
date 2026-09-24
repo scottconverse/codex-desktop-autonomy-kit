@@ -24,7 +24,7 @@ param(
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $kit = $PSScriptRoot
-$kitVersion = "1.7.0"
+$kitVersion = "1.8.0"
 $configMarker = "# Codex Desktop Autonomy Kit managed config"
 $agentsMarkerBegin = "<!-- Codex Desktop Autonomy Kit: capability-section begin -->"
 $agentsMarkerEnd = "<!-- Codex Desktop Autonomy Kit: capability-section end -->"
@@ -127,17 +127,62 @@ function Install-AgentsCapabilityRule {
         Note ("appended capability rule to existing AGENTS.md (your content preserved; {0} -> {1} bytes)" -f $preBytes, $postBytes)
     }
 }
-function Resolve-HelperRoot {
-    # Explicit pointer written by the elevated installer wins; else the documented default.
-    # Without this, a custom -InstallRoot produced a permanent false STALE/modified result.
+function Resolve-HelperInstall {
+    # The install-time pointer is the source of truth for both a custom root and task.
     $pointer = Join-Path (Join-Path $CodexRoot "autonomy-kit") "helper-root.json"
     if (Test-Path -LiteralPath $pointer) {
         try {
             $p = Get-Content -LiteralPath $pointer -Raw | ConvertFrom-Json
-            if ($p.install_root) { return $p.install_root }
+            if ($p.install_root) {
+                return [pscustomobject]@{
+                    Root = [string]$p.install_root
+                    TaskName = $(if ($p.task_name) { [string]$p.task_name } else { "CodexElevatedDevHelper" })
+                    InvokerScript = $(if ($p.invoker_script) { [string]$p.invoker_script } else { Join-Path ([string]$p.install_root) "Invoke-ElevatedDevHelper.ps1" })
+                }
+            }
         } catch { }
     }
-    return "C:\dev\CodexElevatedHelper"
+    return [pscustomobject]@{
+        Root = "C:\dev\CodexElevatedHelper"
+        TaskName = "CodexElevatedDevHelper"
+        InvokerScript = "C:\dev\CodexElevatedHelper\Invoke-ElevatedDevHelper.ps1"
+    }
+}
+function Invoke-HelperInstallerAndVerify {
+    param(
+        [Parameter(Mandatory=$true)][string]$InstallerPath,
+        [Parameter(Mandatory=$true)][pscustomobject]$InstallInfo,
+        [Parameter(Mandatory=$true)][string]$ExpectedHelperPath,
+        [Parameter(Mandatory=$true)][string]$ExpectedInvokerPath,
+        [switch]$NoElevation,
+        [scriptblock]$TaskLookup = { param($name) Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue }
+    )
+
+    $start = @{ FilePath = $InstallerPath; Wait = $true; PassThru = $true }
+    if (-not $NoElevation) { $start.Verb = "RunAs" }
+    $process = Start-Process @start
+    if ($process.ExitCode -ne 0) {
+        throw "Elevated helper installer failed with exit code $($process.ExitCode): $InstallerPath"
+    }
+
+    $task = & $TaskLookup $InstallInfo.TaskName
+    if (-not $task) {
+        throw "Elevated helper installer exited successfully but task '$($InstallInfo.TaskName)' was not found."
+    }
+
+    $installedHelper = Join-Path $InstallInfo.Root "ElevatedDevHelper.ps1"
+    $installedInvoker = $InstallInfo.InvokerScript
+    $expectedHelperHash = Get-FileHashText $ExpectedHelperPath
+    $expectedInvokerHash = Get-FileHashText $ExpectedInvokerPath
+    $installedHelperHash = Get-FileHashText $installedHelper
+    $installedInvokerHash = Get-FileHashText $installedInvoker
+    if (-not $installedHelperHash -or $installedHelperHash -ne $expectedHelperHash) {
+        throw "Elevated helper refresh did not install the expected helper at: $installedHelper"
+    }
+    if (-not $installedInvokerHash -or $installedInvokerHash -ne $expectedInvokerHash) {
+        throw "Elevated helper refresh did not install the expected invoker at: $installedInvoker"
+    }
+    return $task
 }
 function Get-GeneratedConfig($coreText) {
     return @"
@@ -163,6 +208,10 @@ function Write-GeneratedConfig($path, $coreText) {
     $toml = Get-GeneratedConfig -coreText $coreText
     $toml | Set-Content -LiteralPath $path -Encoding UTF8
 }
+
+# Tests can load the real resolver and installer-verification functions without
+# executing setup's machine-changing body.
+if ($env:CODEX_SETUP_SOURCE_ONLY -eq "1") { return }
 
 if (-not $ConfigOnly) {
     Step "Python (user-scope) + python3 shim"
@@ -410,27 +459,41 @@ if (-not $SkipConfig) {
 
 if (-not $SkipHelper -and -not $ConfigOnly) {
     Step "elevated dev helper"
-    $helperTask = Get-ScheduledTask -TaskName "CodexElevatedDevHelper" -ErrorAction SilentlyContinue
+    $helperInstallInfo = Resolve-HelperInstall
+    $helperTask = Get-ScheduledTask -TaskName $helperInstallInfo.TaskName -ErrorAction SilentlyContinue
     $helperInstall = Join-Path $kit "elevated-dev-helper\Install-ElevatedDevHelper-AsAdmin.cmd"
-    $helperRoot = Resolve-HelperRoot
+    $helperRoot = $helperInstallInfo.Root
     $installedHelper = Join-Path $helperRoot "ElevatedDevHelper.ps1"
+    $installedInvoker = $helperInstallInfo.InvokerScript
     if ($helperTask) {
-        Note "CodexElevatedDevHelper already installed ($($helperTask.State))"
-        $repoHash = Get-FileHashText (Join-Path $kit "elevated-dev-helper\ElevatedDevHelper.ps1")
-        $installedHash = Get-FileHashText $installedHelper
-        if ($repoHash -and $installedHash -and $repoHash -ne $installedHash) {
+        Note "$($helperInstallInfo.TaskName) already installed ($($helperTask.State))"
+        $repoHelperHash = Get-FileHashText (Join-Path $kit "elevated-dev-helper\ElevatedDevHelper.ps1")
+        $repoInvokerHash = Get-FileHashText (Join-Path $kit "elevated-dev-helper\Invoke-ElevatedDevHelper.ps1")
+        $installedHelperHash = Get-FileHashText $installedHelper
+        $installedInvokerHash = Get-FileHashText $installedInvoker
+        $helperStale = (-not $installedHelperHash) -or ($repoHelperHash -ne $installedHelperHash)
+        $invokerStale = (-not $installedInvokerHash) -or ($repoInvokerHash -ne $installedInvokerHash)
+        if ($helperStale -or $invokerStale) {
             if ($RefreshHelper) {
-                Note "installed helper differs; launching refresh installer (Windows UAC prompt expected)..."
-                Start-Process -FilePath $helperInstall -Verb RunAs -Wait
+                Note "installed helper is stale or missing its invoker; launching refresh installer (Windows UAC prompt expected)..."
+                $helperTask = Invoke-HelperInstallerAndVerify `
+                    -InstallerPath $helperInstall `
+                    -InstallInfo $helperInstallInfo `
+                    -ExpectedHelperPath (Join-Path $kit "elevated-dev-helper\ElevatedDevHelper.ps1") `
+                    -ExpectedInvokerPath (Join-Path $kit "elevated-dev-helper\Invoke-ElevatedDevHelper.ps1")
+                Note "helper refresh verified: task and installed file hashes are current"
             } else {
-                Warn "installed helper script differs from repo copy; run setup with -RefreshHelper or run elevated-dev-helper\Install-ElevatedDevHelper-AsAdmin.cmd"
+                Warn "installed helper is stale or missing its invoker; run setup with -RefreshHelper or run elevated-dev-helper\Install-ElevatedDevHelper-AsAdmin.cmd"
             }
         }
     } elseif (Test-Path -LiteralPath $helperInstall) {
         Note "launching helper installer (Windows UAC prompt expected)..."
-        Start-Process -FilePath $helperInstall -Verb RunAs -Wait
-        $helperTask = Get-ScheduledTask -TaskName "CodexElevatedDevHelper" -ErrorAction SilentlyContinue
-        Note ("helper: {0}" -f $(if ($helperTask) { 'installed' } else { 'NOT installed (UAC declined or installer error)' }))
+        $helperTask = Invoke-HelperInstallerAndVerify `
+            -InstallerPath $helperInstall `
+            -InstallInfo $helperInstallInfo `
+            -ExpectedHelperPath (Join-Path $kit "elevated-dev-helper\ElevatedDevHelper.ps1") `
+            -ExpectedInvokerPath (Join-Path $kit "elevated-dev-helper\Invoke-ElevatedDevHelper.ps1")
+        Note "helper: installed and verified"
     } else {
         Warn "helper installer not found: $helperInstall"
     }

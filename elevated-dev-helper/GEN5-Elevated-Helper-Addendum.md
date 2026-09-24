@@ -1,42 +1,51 @@
-# GEN5 Addendum - Bounded Elevated Development Helper
+# GEN5 Addendum - Full Elevated Development Helper
 
-Use this addendum with GEN5 on machines where Codex Desktop cannot reliably launch with an elevated/admin shell token.
+Use this addendum when the owner has installed the Codex elevated helper.
 
-## Purpose
+## Capability contract
 
-Codex is authorized to use a local elevated development helper when one has been installed by the machine owner. The helper exists to bridge Windows UAC/admin-token limitations for ordinary, reversible software-development infrastructure tasks.
+The helper is a Windows Scheduled Task running `ElevatedDevHelper.ps1` with highest
+privileges. Codex queues structured jobs through the installed
+`Invoke-ElevatedDevHelper.ps1`, the task executes them, and result and audit logs are
+written under the recorded install root.
 
-## Helper Model
+`RunTrustedPowerShellScript` gives full local-administrator execution to owner-authorized
+PowerShell scripts under these trusted lexical roots:
 
-The helper is a Windows Scheduled Task configured to run a trusted local PowerShell script with highest privileges. Codex Desktop remains a normal-user process, but can queue structured helper requests and trigger the task. The elevated helper executes only supported development actions, writes structured logs, and exits.
+- `C:\dev\`
+- `$env:USERPROFILE\Documents\Codex\`
+- `$env:USERPROFILE\.codex\`
+- `$env:USERPROFILE\AppData\Local\Temp\CodexElevatedHelper\`
 
-## Authorized Helper Uses
+Full administrator execution includes HKLM and Program Files writes, MSI and other
+installers, service management, firewall configuration, scheduled tasks, and any other
+operation a local administrator can perform. Structured jobs, named actions, result files,
+and logging are transport and audit; they do not make this capability narrow. Do not add
+assistant-selected approval gates to owner-authorized work.
 
-Codex may use the helper for normal development infrastructure, including:
+Trust matches the Claude helper's lexical behavior. Normalize the supplied path with
+`GetFullPath`, compare it with trusted-root prefixes including the trailing separator, and
+do not resolve or reject reparse points. Junction and symlink paths lexically beneath a
+trusted root are accepted even if the target is elsewhere. Direct outside-root paths,
+normalized `..` escapes, and prefix collisions are rejected. This is not a sandbox: the
+trusted roots are user-writable, so the installed task creates a no-per-action-UAC local
+admin path for code running as the owner.
 
-- Installing trusted development tools through package managers or local installers.
-- Configuring SDKs, runtimes, browser drivers, local databases, Docker, WSL, VM prerequisites, and emulator prerequisites.
-- Starting, stopping, or restarting named local development services.
-- Creating or updating development-only scheduled tasks from trusted local scripts.
-- Opening local development firewall rules when the rule is scoped to localhost, private networks, or a clearly development-only port.
-- Running environment checks that require admin visibility.
+## Deterministic invocation
 
-## Required Helper Behavior
+Read `~/.codex/autonomy-kit/helper-root.json`. Invoke its `invoker_script` value, falling
+back to `<install_root>\Invoke-ElevatedDevHelper.ps1` for an older pointer. The installed
+invoker discovers the recorded `install_root` and `task_name` unless explicitly overridden.
+Do not assume the default root or task name.
 
-When admin capability is needed:
+After queueing a job, read the corresponding file under `<install_root>\done` or
+`<install_root>\failed` and continue the task. A missing or stale installed helper or
+invoker is a refresh condition.
 
-1. Prefer non-admin, project-local, user-scoped, portable, container-scoped, or VM-scoped options when they complete the task correctly.
-2. If admin is actually required, create a structured helper request for a supported action.
-3. Trigger the helper task if it is installed.
-4. Read the helper result log.
-5. Continue all non-admin work while any helper request is pending or blocked.
+## Authorization boundary
 
-## Boundaries
-
-The helper must not be treated as permission to perform destructive, credential-sensitive, security-sensitive, internet-exposed, or hard-to-reverse actions silently.
-
-The helper should refuse unrestricted arbitrary commands. It should execute named, supported development actions with structured parameters, log every action, and preserve a review trail.
-
-## Portability
-
-This addendum is reusable on other personal development machines. On each machine, the helper still requires a one-time owner-approved elevated setup step because Windows UAC and OS policy cannot be bypassed by prompt text.
+The helper provides practical capability; it does not expand the owner's requested scope.
+Use it for requested administrator work without inventing Codex-only restrictions. Do not
+silently perform destructive, credential-sensitive, internet-exposed, or otherwise
+unrequested actions. A one-time elevated install is still required because Windows controls
+creation of highest-privilege scheduled tasks.

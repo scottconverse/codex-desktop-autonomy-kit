@@ -12,9 +12,8 @@
     `if ($true) { return $resolved }` left every string present and the suite green at
     19 PASS / 0 FAIL. Grep assertions cannot detect a disabled gate. These tests can.
 
-    Regression history this file pins:
-      - A junction on a PARENT directory bypassed the leaf-only check (v1.6.1 Blocker).
-      - CHAINED junctions bypassed the first fix once the walk followed one hop by name.
+    Parity contract: trust is a lexical full-path prefix check, matching the Claude helper.
+    Reparse targets are deliberately not resolved or censored.
 #>
 [CmdletBinding()]
 param()
@@ -90,19 +89,20 @@ try {
     # --- escapes must be refused ---
     Add-GateResult "gate_refuses_outside_all_roots"       (Join-Path $outside "deep\evil.ps1")                              "REFUSE"
     Add-GateResult "gate_refuses_dotdot_traversal"        "C:\dev\..\Windows\System32\calc.exe"                             "REFUSE"
+    Add-GateResult "gate_refuses_dev_prefix_collision"    "C:\developer\evil.ps1"                                             "REFUSE"
+    Add-GateResult "gate_refuses_codex_prefix_collision"  (Join-Path $env:USERPROFILE "Documents\CodexOutside\evil.ps1")     "REFUSE"
+    Add-GateResult "gate_accepts_helper_temp"             (Join-Path $env:USERPROFILE "AppData\Local\Temp\CodexElevatedHelper\x.ps1") "ACCEPT"
 
     if ($canLink) {
-        # The v1.6.1 Blocker: junction on a parent directory.
-        Add-GateResult "gate_refuses_junction_leaf"       $links[0]                                                         "REFUSE"
-        Add-GateResult "gate_refuses_junction_parent"     "$($links[0])\deep\evil.ps1"                                      "REFUSE"
-        # Chained junctions -- the second-hop bypass found during the gauntlet re-test.
-        Add-GateResult "gate_refuses_2_chained_links"     "$($links[1])\deep\evil.ps1"                                      "REFUSE"
-        Add-GateResult "gate_refuses_3_chained_links"     "$($links[2])\deep\evil.ps1"                                      "REFUSE"
+        Add-GateResult "gate_accepts_junction_leaf"       $links[0]                                                         "ACCEPT"
+        Add-GateResult "gate_accepts_junction_parent"     "$($links[0])\evil.ps1"                                           "ACCEPT"
+        Add-GateResult "gate_accepts_2_chained_links"     "$($links[1])\evil.ps1"                                           "ACCEPT"
+        Add-GateResult "gate_accepts_3_chained_links"     "$($links[2])\evil.ps1"                                           "ACCEPT"
     } else {
-        Add-Result "gate_refuses_junction_leaf"   "INFO" "could not create junctions under C:\dev - ACL denied"
-        Add-Result "gate_refuses_junction_parent" "INFO" "could not create junctions under C:\dev - ACL denied"
-        Add-Result "gate_refuses_2_chained_links" "INFO" "could not create junctions under C:\dev - ACL denied"
-        Add-Result "gate_refuses_3_chained_links" "INFO" "could not create junctions under C:\dev - ACL denied"
+        Add-Result "gate_accepts_junction_leaf"   "INFO" "could not create junctions under C:\dev - ACL denied"
+        Add-Result "gate_accepts_junction_parent" "INFO" "could not create junctions under C:\dev - ACL denied"
+        Add-Result "gate_accepts_2_chained_links" "INFO" "could not create junctions under C:\dev - ACL denied"
+        Add-Result "gate_accepts_3_chained_links" "INFO" "could not create junctions under C:\dev - ACL denied"
     }
 } finally {
     foreach ($l in $links) { if (Test-Path -LiteralPath $l) { cmd /c rmdir "$l" 2>$null | Out-Null } }

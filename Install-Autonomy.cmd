@@ -27,7 +27,7 @@ if not "%code%"=="0" (
   exit /b %code%
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$repo='%~dp0elevated-dev-helper\ElevatedDevHelper.ps1'; $root='C:\dev\CodexElevatedHelper'; $ptr=Join-Path $env:USERPROFILE '.codex\autonomy-kit\helper-root.json'; if (Test-Path $ptr) { try { $r=(Get-Content -LiteralPath $ptr -Raw | ConvertFrom-Json).install_root; if ($r) { $root=$r } } catch {} }; $installed=Join-Path $root 'ElevatedDevHelper.ps1'; if ((Test-Path $repo) -and (Test-Path $installed) -and ((Get-FileHash -Algorithm SHA256 -LiteralPath $repo).Hash -ne (Get-FileHash -Algorithm SHA256 -LiteralPath $installed).Hash)) { exit 2 } else { exit 0 }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$repoRoot='%~dp0elevated-dev-helper'; $root='C:\dev\CodexElevatedHelper'; $ptr=Join-Path $env:USERPROFILE '.codex\autonomy-kit\helper-root.json'; $installedInvoker=$null; if (Test-Path $ptr) { try { $meta=Get-Content -LiteralPath $ptr -Raw | ConvertFrom-Json; if ($meta.install_root) { $root=[string]$meta.install_root }; if ($meta.invoker_script) { $installedInvoker=[string]$meta.invoker_script } } catch {} }; if (-not $installedInvoker) { $installedInvoker=Join-Path $root 'Invoke-ElevatedDevHelper.ps1' }; $pairs=@(@((Join-Path $repoRoot 'ElevatedDevHelper.ps1'),(Join-Path $root 'ElevatedDevHelper.ps1')), @((Join-Path $repoRoot 'Invoke-ElevatedDevHelper.ps1'),$installedInvoker)); foreach ($pair in $pairs) { if ((-not (Test-Path -LiteralPath $pair[1])) -or ((Get-FileHash -Algorithm SHA256 -LiteralPath $pair[0]).Hash -ne (Get-FileHash -Algorithm SHA256 -LiteralPath $pair[1]).Hash)) { exit 2 } }; exit 0"
 set "helper_stale=%ERRORLEVEL%"
 if "%helper_stale%"=="2" (
   echo.

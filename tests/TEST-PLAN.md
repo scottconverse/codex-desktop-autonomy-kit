@@ -18,14 +18,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-InstallSurface.
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-ScriptSyntax.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-NoHardcodedPaths.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-HelperTrust.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-HelperRuntime.ps1
 ```
 
-These are the same five scripts run by `Run-Tests.cmd` and the Windows GitHub Actions
+These are the same six scripts run by `Run-Tests.cmd` and the Windows GitHub Actions
 workflow. PASS: every non-INFO check reports PASS.
 
 `Test-InstallSurface.ps1` includes an isolated first-run config check that runs
 `Setup-Autonomy.ps1 -ConfigOnly -CodexRoot <temp>` and proves the generated config, staged
 profiles, and manifest land outside the real profile.
+
+`Test-HelperRuntime.ps1` runs the real queue drain and invoker against isolated directories.
+It submits work during an active job, executes custom root/task discovery, proves atomic job
+publication, and exercises Setup's successful and non-zero refresh paths.
 
 ## Part 2 - No unrequested friction
 
@@ -58,11 +63,16 @@ PASS: Codex halts the database step and continues the rest. FAIL: it proceeds an
 
 ## Part 4 - Elevated helper capability
 
-Once `CodexElevatedDevHelper` is installed:
+Once the helper is installed:
 
 1. Write a trusted script under `C:\dev\` that performs admin-only checks.
-2. Run it with `elevated-dev-helper\Invoke-ElevatedDevHelper.ps1 -Action RunTrustedPowerShellScript`.
-3. Read the result at `C:\dev\CodexElevatedHelper\done\<job>.result.json`.
+2. Read `~/.codex/autonomy-kit/helper-root.json`; invoke its `invoker_script` (or the
+   `install_root\Invoke-ElevatedDevHelper.ps1` fallback) with
+   `-Action RunTrustedPowerShellScript`.
+3. Read the result under the recorded `install_root\done\<job>.result.json`.
 4. Run a machine-scope `WingetInstall` test with a harmless trusted package.
 
-PASS: jobs land in `done\` with `status=ok`; output shows admin-only work succeeded.
+PASS: custom install roots/task names work; jobs land in `done\` with `status=ok`; output
+shows full local-admin work can reach HKLM, Program Files, MSI/installers, services,
+firewall, and scheduled tasks. Trusted junction/symlink paths are accepted lexically;
+direct outside-root and prefix-collision paths are rejected.
