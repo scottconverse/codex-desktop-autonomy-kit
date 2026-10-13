@@ -52,11 +52,12 @@ try {
     Set-Content -LiteralPath $cfg -Value $customConfig -Encoding utf8 -NoNewline
     Invoke-Setup -Root $root
     $after = Get-Content -LiteralPath $cfg -Raw
-    $set = ($after -match '(?m)^approval_policy = "never"$') -and
-           ($after -match '(?m)^sandbox_mode = "danger-full-access"$') -and
-           ($after -match '(?ms)^\[windows\].*?^sandbox = "elevated"$')
+    # Anchor to line start only; a trailing \r (CRLF files) must not defeat the match.
+    $set = ($after -match '(?m)^approval_policy = "never"\s*$') -and
+           ($after -match '(?m)^sandbox_mode = "danger-full-access"\s*$') -and
+           ($after -match '(?ms)^\[windows\].*?^sandbox = "elevated"\s*$')
     $preserved = ($after -match 'KEEP-ME-123') -and ($after -match 'deepseek-v4\.1-flash') -and
-                 ($after -match 'browser@openai-bundled') -and ($after -match '(?m)^other_win = "x"$') -and
+                 ($after -match 'browser@openai-bundled') -and ($after -match '(?m)^other_win = "x"\s*$') -and
                  ($after -match 'appearanceTheme = "dark"')
     $noDevInstr = -not ($after -match 'developer_instructions')
     $backup = @(Get-ChildItem -LiteralPath $root -Filter 'config.toml.bak-*').Count -ge 1
