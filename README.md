@@ -1,10 +1,10 @@
 # Codex Desktop Autonomy Kit
 
-**Version 1.8.0 - Windows** - a click-first setup kit for configuring Codex Desktop toward
+**Version 1.9.0 - Windows** - a click-first setup kit for configuring Codex Desktop toward
 maximum practical software-development autonomy on Windows development machines. See
 [CHANGELOG.md](CHANGELOG.md).
 
-[Landing page](docs/index.html) | [User manual](docs/USER-MANUAL.md) | [Security policy](SECURITY.md) | [Elevated helper details](elevated-dev-helper/README.md)
+[Landing page](docs/index.html) | [User manual](docs/USER-MANUAL.md) | [Security policy](SECURITY.md) | [Elevated helper details](elevated-dev-helper/README.md) | ["blocked by policy" fix](docs/BLOCKED-BY-POLICY.md)
 
 ![Codex Desktop Autonomy Kit architecture](docs/assets/codex-autonomy-architecture.svg)
 
@@ -68,6 +68,28 @@ The kit fixes it with evidence instead:
 - **A section in `CODEX-Desktop-Core.md`**, so the rule travels wherever the profile is used.
 
 Trigger it explicitly with the phrase "capability check" or the `$capability-check` skill.
+
+## Codex's Dangerous-Command List
+
+Codex ships a built-in classifier that flags two kinds of command: **force deletes**
+(`Remove-Item -Force`, `rd /s /q`, `rm -rf`, and the like) and **web-link openers** (a
+command that opens an `http://`/`https://` address through `Start-Process`, `explorer`,
+`mshta`, `rundll32`, a browser, and so on). Under this kit's `approval_policy = "never"`,
+Codex cannot pause to ask about a flagged command, so it refuses it outright with
+`rejected: blocked by policy` -- a ~0-second refusal with no model in the loop. The kit's own
+"capability check" cannot help here, because the command never runs.
+
+Setup writes a kit-owned execpolicy allow-list, `~/.codex/rules/autonomy-kit.rules`, that
+overrides the classifier for every flagged pattern, using shell paths discovered on your
+machine (no hardcoded paths). After installing, start a new Codex chat -- Codex reads its
+rules when a chat starts -- and the commands run. `Doctor-Autonomy.cmd` reports the file's
+state, including whether a Codex update moved its shell to a path the file does not yet cover.
+
+**This is a deliberate tradeoff for an owner-controlled development machine.** Once switched
+off, these commands never prompt again, in any mode. That includes Codex opening links in
+your logged-in browser, and `mshta`/`rundll32` with a URL, which can run code fetched from the
+web. `docs/BLOCKED-BY-POLICY.md` has the details; `Uninstall-Autonomy.cmd` restores Codex's
+built-in behavior. Use `-SkipCommandRules` at install time to keep the list active.
 
 ## Intended Use
 

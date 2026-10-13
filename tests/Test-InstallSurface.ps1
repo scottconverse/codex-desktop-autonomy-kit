@@ -41,7 +41,9 @@ try {
         'docs\discussions\01-welcome-and-installation.md',
         'docs\discussions\02-design-boundaries-and-roadmap.md',
         'SECURITY.md',
-        'tests\Test-HelperRuntime.ps1'
+        'tests\Test-HelperRuntime.ps1',
+        'tests\Test-CommandRules.ps1',
+        'docs\BLOCKED-BY-POLICY.md'
     )
     $missing = @($required | Where-Object { -not (Test-Path -LiteralPath (Join-Path $kit $_)) })
     Add-Result "required_files" $(if ($missing.Count -eq 0) { "PASS" } else { "FAIL" }) $(if ($missing.Count) { "missing: $($missing -join ', ')" } else { "all present" })

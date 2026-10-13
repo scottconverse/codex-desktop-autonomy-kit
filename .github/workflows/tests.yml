@@ -44,6 +44,20 @@ jobs:
         shell: pwsh
         run: ./tests/Test-HelperRuntime.ps1
 
+      # Best-effort: install the Codex CLI so Test-CommandRules can run its real
+      # execpolicy allow/sensitivity checks. If this does not produce a `codex` on
+      # PATH, the test reports those two checks as INFO and still passes, so a hiccup
+      # here never reds the suite. Pin @openai/codex to a reviewed version once the
+      # npm-version-to-CLI-version mapping is confirmed on a runner.
+      - name: Install Codex CLI (best effort, for execpolicy checks)
+        continue-on-error: true
+        shell: pwsh
+        run: npm install -g @openai/codex
+
+      - name: Command rules (discovery, BOM-free, ownership, execpolicy)
+        shell: pwsh
+        run: ./tests/Test-CommandRules.ps1
+
       - name: Capability harness
         shell: pwsh
         run: ./tests/Test-AutonomyKit.ps1

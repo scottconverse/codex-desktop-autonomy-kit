@@ -165,6 +165,23 @@ if (Test-Path -LiteralPath $skillDir) {
     }
 }
 
+# Remove only the kit-owned command-rules file. A file without the kit marker (a
+# user's own rules at that name) is left in place and reported.
+$commandRulesMarker = "# Codex Desktop Autonomy Kit managed rules"
+$rulesPath = Join-Path $cx "rules\autonomy-kit.rules"
+if (Test-Path -LiteralPath $rulesPath) {
+    $rulesRaw = Get-Content -LiteralPath $rulesPath -Raw
+    $firstLine = ($rulesRaw -split "`r?`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -First 1)
+    if (($null -ne $firstLine) -and ($firstLine.Trim() -eq $commandRulesMarker)) {
+        if ($PSCmdlet.ShouldProcess($rulesPath, "remove kit-managed command-rules")) {
+            Remove-Item -LiteralPath $rulesPath -Force
+            Write-Host "removed kit-managed command-rules: $rulesPath (Codex's built-in dangerous-command list is restored)"
+        }
+    } else {
+        Write-Host "command-rules file is not kit-marked; left unchanged: $rulesPath"
+    }
+}
+
 $profileDir = Join-Path $cx "autonomy-kit"
 if (Test-Path -LiteralPath $profileDir) {
     if ($PSCmdlet.ShouldProcess($profileDir, "remove staged autonomy profiles")) {

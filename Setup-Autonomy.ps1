@@ -18,13 +18,15 @@ param(
     [switch]$ForceConfig,
     [switch]$ConfigOnly,
     [string]$CodexRoot = "$env:USERPROFILE\.codex",
-    [switch]$RefreshHelper
+    [switch]$RefreshHelper,
+    [switch]$SkipCommandRules,
+    [switch]$ForceCommandRules
 )
 
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $kit = $PSScriptRoot
-$kitVersion = "1.8.0"
+$kitVersion = "1.9.0"
 $configMarker = "# Codex Desktop Autonomy Kit managed config"
 $agentsMarkerBegin = "<!-- Codex Desktop Autonomy Kit: capability-section begin -->"
 $agentsMarkerEnd = "<!-- Codex Desktop Autonomy Kit: capability-section end -->"
@@ -207,6 +209,198 @@ function Normalize-ConfigText($text) {
 function Write-GeneratedConfig($path, $coreText) {
     $toml = Get-GeneratedConfig -coreText $coreText
     $toml | Set-Content -LiteralPath $path -Encoding UTF8
+}
+
+# --- Codex command rules -----------------------------------------------------
+# Codex ships a built-in "dangerous command" classifier (force deletes and
+# web-link openers). Under approval_policy="never" a match is refused outright
+# with "rejected: blocked by policy"; the agent cannot ask, so it simply stops.
+# An explicit execpolicy allow-rule overrides the classifier. This kit writes a
+# dedicated, kit-owned rules file that allows every pattern the classifier would
+# otherwise block, built from paths discovered on THIS machine (no hardcoded
+# paths). Delete the file to restore Codex's built-in behavior.
+$commandRulesMarker = "# Codex Desktop Autonomy Kit managed rules"
+$commandRulesFileName = "autonomy-kit.rules"
+
+function Get-CodexCommandRulesShellPaths {
+    # Discover every PowerShell/cmd executable Codex might launch on this machine.
+    # Returns absolute paths that exist, de-duplicated case-insensitively.
+    param([string]$CodexRoot)
+    $found = New-Object System.Collections.Generic.List[string]
+    $seen = New-Object System.Collections.Generic.HashSet[string]([StringComparer]::OrdinalIgnoreCase)
+    $add = {
+        param([string]$p)
+        if (-not $p) { return }
+        try { $full = [System.IO.Path]::GetFullPath($p) } catch { return }
+        if ((Test-Path -LiteralPath $full -PathType Leaf) -and $seen.Add($full)) { $found.Add($full) }
+    }
+    # 1. Shells Codex actually launched, from recent session logs (most reliable).
+    $sessions = Join-Path $CodexRoot "sessions"
+    if (Test-Path -LiteralPath $sessions) {
+        $re = [regex]'(?i)"([A-Za-z]:(?:\\\\[^"\\]+)+\\\\(?:pwsh|powershell|cmd)\.exe)"'
+        # Long-running sessions can leave very large logs; reading those whole would
+        # stall setup. Skip any log over 20 MB -- the same shell paths appear in every
+        # logged command, and sources 2-4 below cover shells independently.
+        $logs = Get-ChildItem -LiteralPath $sessions -Recurse -Filter "*.jsonl" -ErrorAction SilentlyContinue |
+            Where-Object { $_.Length -le 20MB } |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 25
+        foreach ($log in $logs) {
+            try { $raw = Get-Content -LiteralPath $log.FullName -Raw -ErrorAction Stop } catch { continue }
+            foreach ($m in $re.Matches($raw)) { & $add ($m.Groups[1].Value -replace '\\\\', '\') }
+        }
+    }
+    # 2. Codex bundled runtime pwsh; the wildcard tolerates a renamed runtime folder.
+    foreach ($p in (Get-ChildItem -Path (Join-Path $env:USERPROFILE ".cache\codex-runtimes\*\dependencies\native\powershell\pwsh.exe") -ErrorAction SilentlyContinue)) { & $add $p.FullName }
+    # 3. Shells on PATH.
+    foreach ($name in @("pwsh", "powershell", "cmd")) {
+        foreach ($c in (Get-Command $name -All -ErrorAction SilentlyContinue)) { if ($c.Source) { & $add $c.Source } }
+    }
+    # 4. Standard Windows locations, built from environment variables only.
+    & $add (Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\pwsh.exe")
+    foreach ($p in (Get-ChildItem -Path (Join-Path $env:ProgramFiles "PowerShell\*\pwsh.exe") -ErrorAction SilentlyContinue)) { & $add $p.FullName }
+    & $add (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe")
+    & $add (Join-Path $env:SystemRoot "System32\cmd.exe")
+    return , $found.ToArray()
+}
+
+function Get-CommandRulesText {
+    # Build the full rules file text from discovered shell paths plus the fixed
+    # command-name lists. A path-only prefix rule allows every script that shell
+    # runs (covers the wrapper call the classifier checks when it cannot split a
+    # script); the name rules match the decomposed simple commands.
+    param([string[]]$ShellPaths, [string]$Version = $kitVersion)
+    $esc = { param([string]$t) $t.Replace('\', '\\').Replace('"', '\"') }
+    $deleteCommands = @('Remove-Item', 'ri', 'rm', 'del', 'erase', 'rd', 'rmdir')
+    $linkOpeners = @('Start-Process', 'start', 'saps', 'Invoke-Item', 'ii',
+        'explorer', 'explorer.exe', 'mshta', 'mshta.exe', 'rundll32', 'rundll32.exe',
+        'chrome', 'chrome.exe', 'msedge', 'msedge.exe', 'firefox', 'firefox.exe',
+        'iexplore', 'iexplore.exe')
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add($commandRulesMarker)
+    $lines.Add("# version = ""$Version""")
+    $lines.Add("#")
+    $lines.Add("# These allow-rules switch OFF Codex's built-in dangerous-command list on this")
+    $lines.Add("# machine (force deletes and web-link openers). Delete this file to restore the")
+    $lines.Add("# built-in behavior. Generated by the Codex Desktop Autonomy Kit; do not hand-edit.")
+    $lines.Add("")
+    $lines.Add("# Shells Codex launches (absolute paths discovered on this machine). A path-only")
+    $lines.Add("# prefix rule allows every script that shell runs, so new flags are covered too.")
+    foreach ($p in $ShellPaths) { $lines.Add("prefix_rule(pattern=[""$(& $esc $p)""], decision=""allow"")") }
+    $lines.Add("")
+    $lines.Add("# Delete cmdlets/commands (match the decomposed simple command).")
+    foreach ($c in $deleteCommands) { $lines.Add("prefix_rule(pattern=[""$(& $esc $c)""], decision=""allow"")") }
+    $lines.Add("")
+    $lines.Add("# Web-link openers (match the decomposed simple command).")
+    foreach ($c in $linkOpeners) { $lines.Add("prefix_rule(pattern=[""$(& $esc $c)""], decision=""allow"")") }
+    $lines.Add("")
+    return ($lines -join "`r`n")
+}
+
+function Find-CodexCli {
+    # Newest codex.exe across the two known install locations and PATH, or $null.
+    $cands = New-Object System.Collections.Generic.List[object]
+    foreach ($base in @((Join-Path $env:LOCALAPPDATA "OpenAI\Codex\bin"), (Join-Path $env:LOCALAPPDATA "Programs\CodexCLI"))) {
+        if (Test-Path -LiteralPath $base) {
+            foreach ($f in (Get-ChildItem -LiteralPath $base -Recurse -Filter "codex.exe" -ErrorAction SilentlyContinue)) { $cands.Add($f) }
+        }
+    }
+    $onPath = Get-Command codex -ErrorAction SilentlyContinue
+    if ($onPath -and $onPath.Source -and (Test-Path -LiteralPath $onPath.Source)) { $cands.Add((Get-Item -LiteralPath $onPath.Source)) }
+    $cands | Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName
+}
+
+function Test-CommandRulesAllow {
+    # Return $true if Codex's own execpolicy checker says the command is allowed.
+    param([string]$CodexExe, [string]$RulesPath, [string[]]$Argv)
+    try {
+        $out = & $CodexExe execpolicy check --rules $RulesPath @Argv 2>$null | Out-String
+        return ($out -match '"decision"\s*:\s*"allow"')
+    } catch { return $false }
+}
+
+function Write-NoBomUtf8 {
+    # Codex's Starlark rules parser rejects a UTF-8 BOM (Windows PowerShell's
+    # Set-Content -Encoding UTF8 writes one), so the rules file must be BOM-free.
+    param([string]$Path, [string]$Text)
+    [System.IO.File]::WriteAllText($Path, $Text, (New-Object System.Text.UTF8Encoding $false))
+}
+
+function Write-CodexCommandRules {
+    # Create or refresh the kit-owned command-rules file, with the same ownership
+    # discipline as config.toml: create when absent; refresh only a file this kit
+    # generated; never overwrite a file edited since (unless -Force); back up first;
+    # validate with Codex's own checker and roll back on failure. Throws on a
+    # validation failure so the caller can report it; the file is left safe either way.
+    param([string]$CodexRoot, [switch]$Force)
+    $rulesDir = Join-Path $CodexRoot "rules"
+    New-Item -ItemType Directory -Force -Path $rulesDir | Out-Null
+    $rulesPath = Join-Path $rulesDir $commandRulesFileName
+
+    $shellPaths = Get-CodexCommandRulesShellPaths -CodexRoot $CodexRoot
+    if (-not $shellPaths -or $shellPaths.Count -eq 0) {
+        Warn "no PowerShell/cmd shells discovered; command-rules file not written"
+        return
+    }
+    $generated = Get-CommandRulesText -ShellPaths $shellPaths
+
+    if (-not (Test-Path -LiteralPath $rulesPath)) {
+        Write-NoBomUtf8 -Path $rulesPath -Text $generated
+        Note "wrote Codex command-rules: $rulesPath ($($shellPaths.Count) shells)"
+    } else {
+        $raw = Get-Content -LiteralPath $rulesPath -Raw
+        $firstLine = ($raw -split "`r?`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -First 1)
+        $startsWithMarker = ($null -ne $firstLine) -and ($firstLine.Trim() -eq $commandRulesMarker)
+        $matchesGenerated = ((Normalize-ConfigText $raw) -eq (Normalize-ConfigText $generated))
+        $stripVersion = { param($t) ($t -replace '(?m)^\s*#\s*version\s*=\s*"[^"]*"\s*$', '# version = "(current)"') }
+        $matchesPrevKit = $startsWithMarker -and ((& $stripVersion (Normalize-ConfigText $raw)) -eq (& $stripVersion (Normalize-ConfigText $generated)))
+
+        if ($matchesGenerated) {
+            Note "Codex command-rules already current"
+            return
+        }
+        if ($startsWithMarker -or $Force) {
+            if ($Force -and -not $startsWithMarker) {
+                Warn "-ForceCommandRules will replace a non-kit $commandRulesFileName (backed up first)"
+            } elseif (-not $matchesPrevKit) {
+                Note "command-rules file was modified since the kit wrote it; refreshing (backup first)"
+            }
+            Backup-File $rulesPath | Out-Null
+            Write-NoBomUtf8 -Path $rulesPath -Text $generated
+            Note "refreshed Codex command-rules: $rulesPath ($($shellPaths.Count) shells)"
+        } else {
+            Warn "a non-kit $commandRulesFileName exists; left unchanged (use -ForceCommandRules to replace)"
+            return
+        }
+    }
+
+    # Validate with Codex's own checker. A broken rules file would stop every command
+    # loading the rules, so a failed validation rolls back and reports rather than
+    # leaving the file in place.
+    $codex = Find-CodexCli
+    if (-not $codex) {
+        Warn "Codex CLI not found; command-rules written but NOT validated"
+        return
+    }
+    $sampleShell = $shellPaths[0]
+    $checks = @(
+        @{ name = "script force-delete"; argv = @($sampleShell, "-Command", 'Get-ChildItem x | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }') }
+        @{ name = "single force-delete"; argv = @("Remove-Item", "x", "-Recurse", "-Force") }
+        @{ name = "link opener"; argv = @("Start-Process", "https://example.com") }
+    )
+    $bad = @($checks | Where-Object { -not (Test-CommandRulesAllow -CodexExe $codex -RulesPath $rulesPath -Argv $_.argv) } | ForEach-Object { $_.name })
+    if ($bad.Count) {
+        $bak = Get-ChildItem -LiteralPath $rulesDir -Filter "$commandRulesFileName.bak-*" -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($bak) {
+            Copy-Item -LiteralPath $bak.FullName -Destination $rulesPath -Force
+            Warn "restored previous command-rules from $($bak.Name)"
+        } else {
+            Remove-Item -LiteralPath $rulesPath -Force
+            Warn "removed the invalid command-rules file"
+        }
+        throw "Codex command-rules validation failed for: $($bad -join ', ')"
+    }
+    Note "command-rules validated (force-delete script + single, and link opener all allow)"
 }
 
 # Tests can load the real resolver and installer-verification functions without
@@ -457,6 +651,17 @@ if (-not $SkipConfig) {
     }
 }
 
+if (-not $SkipConfig -and -not $SkipCommandRules) {
+    Step "Codex command rules (switch off the built-in dangerous-command list)"
+    # Isolated like the other install steps: if this one fails, the file has already
+    # been rolled back inside the function, so warn and continue rather than abort.
+    try {
+        Write-CodexCommandRules -CodexRoot $CodexRoot -Force:$ForceCommandRules
+    } catch {
+        Warn "command rules step failed: $($_.Exception.Message)"
+    }
+}
+
 if (-not $SkipHelper -and -not $ConfigOnly) {
     Step "elevated dev helper"
     $helperInstallInfo = Resolve-HelperInstall
@@ -508,6 +713,7 @@ if (-not $ConfigOnly) {
 }
 
 Write-Host "`nNEXT:" -ForegroundColor Green
-Write-Host "  1. Restart Codex Desktop so PATH and config changes load."
+Write-Host "  1. Restart Codex Desktop, and start a NEW chat, so PATH, config, and command"
+Write-Host "     rules all load (Codex reads its rules when a chat starts)."
 Write-Host "  2. Inventory check anytime: powershell -File .\Doctor-Autonomy.ps1"
 Write-Host "  3. If config.toml was custom, merge staged files from ~/.codex/autonomy-kit manually."

@@ -14,6 +14,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tests\Test-HelperTrust
 if errorlevel 1 goto fail
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tests\Test-HelperRuntime.ps1"
 if errorlevel 1 goto fail
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tests\Test-CommandRules.ps1"
+if errorlevel 1 goto fail
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tests\Test-AutonomyKit.ps1"
 if errorlevel 1 goto fail
 echo.
