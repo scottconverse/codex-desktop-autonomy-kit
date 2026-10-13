@@ -1,6 +1,6 @@
 # Codex Desktop Autonomy Kit User Manual
 
-Version 1.8.0 for Windows.
+Version 1.9.0 for Windows.
 
 ![Codex Desktop Autonomy Kit architecture](assets/codex-autonomy-architecture.svg)
 
@@ -55,7 +55,7 @@ The rule separates three cases, which is the part that makes it useful:
 
 | Case | What it looks like | Correct response |
 |------|--------------------|------------------|
-| Policy veto | `rejected: blocked by policy`, before the shell runs | Spelling problem. Reformat and retry, e.g. `cmd /c rd /s /q` instead of `Remove-Item -Recurse -Force`. |
+| Policy veto | `rejected: blocked by policy`, before the shell runs | Codex's built-in dangerous-command list, refused because approvals are `never`. The kit's command rules switch it off; if you still hit it, re-run Install and start a new chat (see below). Meanwhile the non-force delete, or `[System.IO.File]::Delete()`, runs. |
 | Real limit | ACL denial, UAC declined, file lock, missing tool | Genuine. Name the exact error and continue everything else. |
 | Imagined limit | Assumed sandbox, workspace-only scope, permission never checked | The common case. Test it instead of asserting it. |
 
@@ -64,6 +64,30 @@ skill. Doctor reports whether the rule and skill are present.
 
 Uninstall removes only the kit-authored block from `AGENTS.md`, keeping your own text, and
 removes the installed skill.
+
+## Codex Command Rules
+
+Codex has a built-in list of "dangerous" commands: **force deletes**
+(`Remove-Item -Force`, `rd /s /q`, `rm -rf`) and **web-link openers** (anything that opens an
+`http://`/`https://` address through `Start-Process`, `explorer`, `mshta`, `rundll32`, a
+browser, and so on). Because this kit sets `approval_policy = "never"`, Codex cannot pause to
+ask about one of these, so it refuses it instantly with `rejected: blocked by policy`.
+
+To stop that, Install writes `~/.codex/rules/autonomy-kit.rules`, a kit-owned allow-list that
+overrides the built-in list for every flagged pattern. It is built from shell paths found on
+your machine (nothing hardcoded), written without a byte-order mark so Codex's parser accepts
+it, and checked with Codex's own `execpolicy check` right after it is written; if the check
+fails, Install rolls the file back instead of leaving a broken one.
+
+- **Start a new Codex chat after installing** -- rules load when a chat starts.
+- **Doctor** shows whether the file is present, parser-safe, current, and whether a Codex
+  update has moved its shell somewhere the file does not yet cover (re-run Install to fix).
+- **Uninstall** deletes the kit-owned file and restores Codex's built-in behavior.
+- **`-SkipCommandRules`** at install time keeps Codex's list active.
+
+Tradeoff: once switched off, these commands never prompt again in any mode, including Codex
+opening links in your logged-in browser and `mshta`/`rundll32` with a URL. See
+`docs/BLOCKED-BY-POLICY.md`.
 
 ## Click-First Controls
 
@@ -212,7 +236,7 @@ without repeated UAC prompts after the helper is installed.
 
 ## Versioning
 
-The current public release is v1.8.0. Setup writes the same version into the staged manifest
+The current public release is v1.9.0. Setup writes the same version into the staged manifest
 at `~/.codex/autonomy-kit/manifest.json`.
 
 ## Safety Notes

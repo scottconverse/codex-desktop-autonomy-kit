@@ -74,6 +74,46 @@ if (Test-Path -LiteralPath $agents) {
 }
 L "capability-check skill" $(if (Test-Path -LiteralPath $skillFile) { $skillFile } else { '(missing)' })
 
+Section "Codex command rules"
+# Reuse the real generator/discovery from Setup (read-only load; the guard returns
+# before any machine-changing work).
+$rulesPath = Join-Path $cx "rules\autonomy-kit.rules"
+$commandRulesMarker = "# Codex Desktop Autonomy Kit managed rules"
+$setupScript = Join-Path $kit "Setup-Autonomy.ps1"
+$genAvailable = $false
+if (Test-Path -LiteralPath $setupScript) {
+    try { $env:CODEX_SETUP_SOURCE_ONLY = "1"; . $setupScript; $genAvailable = $true } catch { }
+    finally { $env:CODEX_SETUP_SOURCE_ONLY = $null }
+}
+if (Test-Path -LiteralPath $rulesPath) {
+    $rulesRaw = Get-Content -LiteralPath $rulesPath -Raw
+    $firstLine = ($rulesRaw -split "`r?`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -First 1)
+    $marked = ($null -ne $firstLine) -and ($firstLine.Trim() -eq $commandRulesMarker)
+    L "rules file" "present ($((Get-Item $rulesPath).Length) bytes)"
+    L "  kit-managed marker" $(if ($marked) { 'yes' } else { 'no/custom' })
+    $bytes = [System.IO.File]::ReadAllBytes($rulesPath)
+    $hasBom = ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
+    L "  BOM-free (parser-safe)" $(if ($hasBom) { 'NO - has UTF-8 BOM, Codex will reject it' } else { 'yes' })
+    if ($genAvailable) {
+        $shellPaths = Get-CodexCommandRulesShellPaths -CodexRoot $cx
+        $generated = Get-CommandRulesText -ShellPaths $shellPaths
+        $norm = { param($t) (($t -replace "^﻿", "") -replace "`r`n", "`n").TrimEnd() }
+        $stripVersion = { param($t) ($t -replace '(?m)^\s*#\s*version\s*=\s*"[^"]*"\s*$', '# version = "(current)"') }
+        $current = ((& $stripVersion (& $norm $rulesRaw)) -eq (& $stripVersion (& $norm $generated)))
+        L "  current with this kit" $(if ($current) { 'yes' } else { 'STALE - re-run Install-Autonomy.cmd' })
+        # Shell drift: shells seen in recent logs that the rules file does not cover.
+        $covered = @([regex]::Matches($rulesRaw, '(?im)^prefix_rule\(pattern=\["([A-Za-z]:\\\\.*?\.exe)"\]') |
+            ForEach-Object { ($_.Groups[1].Value -replace '\\\\', '\') })
+        $uncovered = @($shellPaths | Where-Object { $covered -notcontains $_ })
+        L "  shells covered" "$($covered.Count) in file; $($shellPaths.Count) discovered now"
+        if ($uncovered.Count) { L "  UNCOVERED shell(s)" (($uncovered -join '; ') + "  (re-run Install-Autonomy.cmd)") }
+    } else {
+        L "  current with this kit" "(cannot compare - Setup-Autonomy.ps1 not loadable)"
+    }
+} else {
+    L "rules file" "(missing - run Install-Autonomy.cmd to switch off Codex's dangerous-command list)"
+}
+
 Section "Elevated dev helper"
 # UX-1 / QA-3: the helper task is machine-global, but the config layer is per-root.
 # Only report the helper when we are auditing the machine's real Codex root, so the

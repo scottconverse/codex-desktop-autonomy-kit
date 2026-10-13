@@ -6,6 +6,40 @@ Verification note: `.github/workflows/tests.yml` runs the six shipped PowerShell
 Windows for pushes to `master`, pull requests, and manual dispatch. Local audit reports
 distinguish scripts run by the auditor from conclusions produced by GitHub Actions.
 
+## v1.9.0 - 2026-10-13
+
+Switches off Codex's built-in dangerous-command classifier for this machine.
+
+### Added
+- **Codex command rules.** Setup now writes `~/.codex/rules/autonomy-kit.rules`, an
+  execpolicy allow-list that overrides Codex's built-in dangerous-command classifier (force
+  deletes and web-link openers). Under `approval_policy = "never"` that classifier refuses
+  matching commands outright with `rejected: blocked by policy`, because Codex has nobody to
+  ask; an explicit allow-rule overrides it. The file is built from shell paths discovered on
+  the machine (recent session logs, the Codex bundled runtime, PATH, and standard Windows
+  locations) with no hardcoded paths, is written UTF-8 **without** a BOM (Codex's Starlark
+  parser rejects a BOM), and is validated with `codex execpolicy check` after writing; a
+  failed validation rolls the file back rather than leaving a broken rules file that would
+  stop every command loading the rules. New switches `-SkipCommandRules` and
+  `-ForceCommandRules`. Ownership follows the config.toml model: create when absent, refresh
+  only a kit-generated file, never overwrite one edited since (without `-ForceCommandRules`),
+  back up first.
+- **`docs/BLOCKED-BY-POLICY.md`** explains the classifier, what is on the list, the fix, and
+  how to verify by hand.
+
+### Changed
+- **Doctor** reports the command-rules file: presence, kit marker, BOM-free, whether it is
+  current with this kit, and whether Codex has started using a shell path the file does not
+  yet cover (which happens after a Codex update moves its bundled PowerShell).
+- **Uninstall** removes the kit-owned command-rules file (marker-guarded; a non-kit file at
+  that name is left in place and reported).
+- **Corrected the "policy veto" guidance** in `CODEX-Desktop-Core.md`, the AGENTS.md
+  capability rule, the capability-check skill, README, and the user manual. The old advice to
+  retry with `cmd /c rd /s /q` was wrong: that command is itself on the classifier's list.
+  The guidance now points at re-running Setup / `docs/BLOCKED-BY-POLICY.md`, and notes the
+  non-force delete and `[System.IO.File]::Delete()` escape hatches.
+- CI installs a pinned Codex CLI so the command-rules checks run on the Windows runner.
+
 ## v1.8.0 - 2026-09-22
 
 Reliability and helper-parity release. This version supersedes v1.7.0's reparse-resolving
