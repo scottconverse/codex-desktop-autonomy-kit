@@ -20,13 +20,14 @@ param(
     [string]$CodexRoot = "$env:USERPROFILE\.codex",
     [switch]$RefreshHelper,
     [switch]$SkipCommandRules,
-    [switch]$ForceCommandRules
+    [switch]$ForceCommandRules,
+    [switch]$SkipReconcile
 )
 
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $kit = $PSScriptRoot
-$kitVersion = "1.9.0"
+$kitVersion = "2.0.0"
 $configMarker = "# Codex Desktop Autonomy Kit managed config"
 $agentsMarkerBegin = "<!-- Codex Desktop Autonomy Kit: capability-section begin -->"
 $agentsMarkerEnd = "<!-- Codex Desktop Autonomy Kit: capability-section end -->"
@@ -403,6 +404,93 @@ function Write-CodexCommandRules {
     Note "command-rules validated (force-delete script + single, and link opener all allow)"
 }
 
+# --- Autonomy-key reconcile (v2.0.0) -----------------------------------------
+# For an existing config the kit does not own, set ONLY the kit's autonomy keys
+# in place and leave everything else -- every other key, table, comment, blank
+# line, and the file's newline style -- byte-for-byte untouched. This is a
+# surgical key-setter, never a whole-file rewrite; the v1.6.1 clobber bug was
+# exactly a whole-file rewrite of a custom config, and this must never become one.
+# developer_instructions is deliberately NOT managed here: the kit never injects
+# or rewrites it on an existing config.
+function Reconcile-AutonomyConfig {
+    param([string]$Path, [string]$ManifestPath)
+
+    $raw = Get-Content -LiteralPath $Path -Raw
+    if ($null -eq $raw) { $raw = "" }
+    $nl = if ($raw -match "`r`n") { "`r`n" } else { "`n" }
+    $endsWithNewline = $raw.EndsWith("`n")
+    $lines = [System.Collections.Generic.List[string]]::new()
+    foreach ($l in ($raw -split "`r?`n")) { $lines.Add($l) }
+    # A trailing newline makes the split yield one empty tail element; drop it so
+    # inserts land correctly, then restore the trailing newline when writing.
+    if ($endsWithNewline -and $lines.Count -gt 0 -and $lines[$lines.Count - 1] -eq "") {
+        $lines.RemoveAt($lines.Count - 1)
+    }
+
+    function Find-FirstTable([System.Collections.Generic.List[string]]$L) {
+        for ($i = 0; $i -lt $L.Count; $i++) { if ($L[$i] -match '^\s*\[') { return $i } }
+        return -1
+    }
+
+    $changes = New-Object System.Collections.Generic.List[string]
+
+    # Top-level scalar keys must sit above the first table header in TOML, so only
+    # that region is searched and inserts go just before the first table.
+    foreach ($kv in @(
+            @{ k = 'approval_policy'; v = 'never' },
+            @{ k = 'sandbox_mode'; v = 'danger-full-access' })) {
+        $k = $kv.k; $desired = "$($kv.k) = ""$($kv.v)"""
+        $firstTable = Find-FirstTable $lines
+        $limit = if ($firstTable -ge 0) { $firstTable } else { $lines.Count }
+        $idx = -1
+        for ($i = 0; $i -lt $limit; $i++) { if ($lines[$i] -match "^\s*$([regex]::Escape($k))\s*=") { $idx = $i; break } }
+        if ($idx -ge 0) {
+            if ($lines[$idx].Trim() -ne $desired) {
+                $changes.Add("${k}: '$($lines[$idx].Trim())' -> '$desired'")
+                $lines[$idx] = $desired
+            }
+        } else {
+            $insertAt = if ($firstTable -ge 0) { $firstTable } else { $lines.Count }
+            $lines.Insert($insertAt, $desired)
+            $changes.Add("${k}: (absent) -> '$desired'")
+        }
+    }
+
+    # [windows] sandbox = "elevated"
+    $winIdx = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^\s*\[windows\]\s*$') { $winIdx = $i; break } }
+    if ($winIdx -ge 0) {
+        $end = $lines.Count
+        for ($i = $winIdx + 1; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^\s*\[') { $end = $i; break } }
+        $sIdx = -1
+        for ($i = $winIdx + 1; $i -lt $end; $i++) { if ($lines[$i] -match '^\s*sandbox\s*=') { $sIdx = $i; break } }
+        if ($sIdx -ge 0) {
+            if ($lines[$sIdx].Trim() -ne 'sandbox = "elevated"') {
+                $changes.Add("[windows] sandbox: '$($lines[$sIdx].Trim())' -> 'sandbox = ""elevated""'")
+                $lines[$sIdx] = 'sandbox = "elevated"'
+            }
+        } else {
+            $lines.Insert($winIdx + 1, 'sandbox = "elevated"')
+            $changes.Add("[windows] sandbox: (absent) -> 'sandbox = ""elevated""'")
+        }
+    } else {
+        if ($lines.Count -gt 0 -and $lines[$lines.Count - 1].Trim() -ne '') { $lines.Add('') }
+        $lines.Add('[windows]')
+        $lines.Add('sandbox = "elevated"')
+        $changes.Add("[windows] table added with sandbox = ""elevated""")
+    }
+
+    if ($changes.Count -eq 0) {
+        return [pscustomobject]@{ Changed = $false; Changes = @() }
+    }
+
+    $out = ($lines -join $nl)
+    if ($endsWithNewline) { $out += $nl }
+    Backup-File $Path $ManifestPath | Out-Null
+    Write-NoBomUtf8 -Path $Path -Text $out
+    return [pscustomobject]@{ Changed = $true; Changes = @($changes) }
+}
+
 # Tests can load the real resolver and installer-verification functions without
 # executing setup's machine-changing body.
 if ($env:CODEX_SETUP_SOURCE_ONLY -eq "1") { return }
@@ -639,14 +727,27 @@ if (-not $SkipConfig) {
                 Write-GeneratedConfig -path $config -coreText $core
                 Note "refreshed kit-managed config.toml"
             }
-        } elseif ($markedButModified) {
-            Warn "config.toml carries the kit marker but has been modified since (your edits detected)"
-            Note "left unchanged to protect your additions"
-            Note "to replace it with the kit template anyway, re-run with -ForceConfig"
-            Note "merge staged files from $profileDir when ready"
         } else {
-            Note "custom config.toml found; left unchanged (not kit-owned, so never replaced)"
-            Note "merge staged files from $profileDir when ready"
+            # Not doing a full-file write. The file is never wholesale-replaced here; at
+            # most the kit reconciles its own autonomy keys in place (v2.0.0), leaving
+            # every other key, table, comment, and formatting byte untouched.
+            if ($markedButModified) {
+                Warn "config.toml carries the kit marker but has been modified since (your edits detected)"
+                Note "not replacing it; to overwrite with the kit template, re-run with -ForceConfig"
+            } else {
+                Note "custom config.toml found; not replacing it (your settings are preserved)"
+            }
+            if ($SkipReconcile) {
+                Note "autonomy-key reconcile skipped (-SkipReconcile); merge staged files from $profileDir when ready"
+            } else {
+                $rc = Reconcile-AutonomyConfig -Path $config -ManifestPath (Join-Path $profileDir "config-backup-manifest.json")
+                if ($rc.Changed) {
+                    Note "reconciled autonomy keys in your existing config (backup written first):"
+                    foreach ($c in $rc.Changes) { Note "    $c" }
+                } else {
+                    Note "autonomy keys already satisfied; config left unchanged"
+                }
+            }
         }
     }
 }
@@ -716,4 +817,6 @@ Write-Host "`nNEXT:" -ForegroundColor Green
 Write-Host "  1. Restart Codex Desktop, and start a NEW chat, so PATH, config, and command"
 Write-Host "     rules all load (Codex reads its rules when a chat starts)."
 Write-Host "  2. Inventory check anytime: powershell -File .\Doctor-Autonomy.ps1"
-Write-Host "  3. If config.toml was custom, merge staged files from ~/.codex/autonomy-kit manually."
+Write-Host "  3. The kit sets its own autonomy keys in a custom config.toml and leaves the rest"
+Write-Host "     alone; pass -SkipReconcile to turn that off. developer_instructions is never"
+Write-Host "     touched -- merge the staged profile from ~/.codex/autonomy-kit if you want it."

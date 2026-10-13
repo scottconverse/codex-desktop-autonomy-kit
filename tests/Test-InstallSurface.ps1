@@ -43,6 +43,7 @@ try {
         'SECURITY.md',
         'tests\Test-HelperRuntime.ps1',
         'tests\Test-CommandRules.ps1',
+        'tests\Test-ConfigReconcile.ps1',
         'docs\BLOCKED-BY-POLICY.md'
     )
     $missing = @($required | Where-Object { -not (Test-Path -LiteralPath (Join-Path $kit $_)) })
@@ -159,7 +160,9 @@ try {
     $setup = Get-Content -LiteralPath (Join-Path $kit 'Setup-Autonomy.ps1') -Raw
     $ok = (
         $setup -match 'Codex Desktop Autonomy Kit managed config' -and
-        $setup -match 'custom config\.toml found; left unchanged' -and
+        $setup -match 'custom config\.toml found; not replacing it' -and
+        $setup -match 'Reconcile-AutonomyConfig' -and
+        $setup -match '\[switch\]\$SkipReconcile' -and
         $setup -match 'manifest\.json' -and
         $setup -match 'config-backup-manifest\.json' -and
         $setup -match 'installed helper is stale or missing its invoker' -and
@@ -242,7 +245,10 @@ try {
         Set-Content -LiteralPath $config -Value $body -Encoding UTF8 -NoNewline
         $hashBefore = (Get-FileHash -Algorithm SHA256 -LiteralPath $config).Hash
         $bakBefore = @(Get-ChildItem -LiteralPath $tempRoot -Filter 'config.toml.bak-*' -ErrorAction SilentlyContinue).Count
-        & powershell -NoProfile -ExecutionPolicy Bypass -File $setupPath -ConfigOnly -CodexRoot $tempRoot *> $null
+        # -SkipReconcile isolates the original clobber-guard contract: when the kit is NOT
+        # reconciling, a custom config must be left byte-for-byte untouched. The default
+        # reconcile path (which sets only the kit's own keys) is covered by Test-ConfigReconcile.
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $setupPath -ConfigOnly -SkipReconcile -CodexRoot $tempRoot *> $null
         $hashAfter = (Get-FileHash -Algorithm SHA256 -LiteralPath $config).Hash
         $bakAfter = @(Get-ChildItem -LiteralPath $tempRoot -Filter 'config.toml.bak-*' -ErrorAction SilentlyContinue).Count
         $contentNow = Get-Content -LiteralPath $config -Raw

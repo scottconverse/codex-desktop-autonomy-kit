@@ -58,6 +58,10 @@ jobs:
         shell: pwsh
         run: ./tests/Test-CommandRules.ps1
 
+      - name: Config reconcile (autonomy keys set in place, rest preserved)
+        shell: pwsh
+        run: ./tests/Test-ConfigReconcile.ps1
+
       - name: Capability harness
         shell: pwsh
         run: ./tests/Test-AutonomyKit.ps1
