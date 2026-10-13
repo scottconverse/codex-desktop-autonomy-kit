@@ -1,6 +1,6 @@
 # Codex Desktop Autonomy Kit
 
-**Version 1.9.0 - Windows** - a click-first setup kit for configuring Codex Desktop toward
+**Version 2.0.0 - Windows** - a click-first setup kit for configuring Codex Desktop toward
 maximum practical software-development autonomy on Windows development machines. See
 [CHANGELOG.md](CHANGELOG.md).
 
@@ -134,11 +134,17 @@ it replaces it only when the file is provably kit-owned:
 - **You passed `-ForceConfig`** explicitly.
 
 Anything else -- including a config that carries the kit marker but which you have edited
-since -- is left byte-for-byte unchanged, and setup stages files under
-`~/.codex/autonomy-kit/` for manual merge. A backup is taken before any overwrite that does
-happen. When an existing config is overwritten, setup records that exact backup path and
-SHA-256 in `~/.codex/autonomy-kit/config-backup-manifest.json`; uninstall restores only that
-recorded backup, never an arbitrary newest `.bak-*` file.
+since -- is **never wholesale-replaced**. Instead (v2.0.0), setup *reconciles its own
+autonomy keys in place*: it sets `approval_policy = "never"`, `sandbox_mode =
+"danger-full-access"`, and `[windows] sandbox = "elevated"`, and leaves every other key,
+table, comment, and the file's formatting byte-for-byte untouched. It backs up first and
+prints each key it changed. `developer_instructions` is never injected on an existing config;
+setup stages the profile under `~/.codex/autonomy-kit/` for manual merge. Pass
+`-SkipReconcile` to leave a custom config completely untouched (the pre-2.0 behavior). When a
+provably kit-owned config is overwritten, or a backup is taken before a reconcile, setup
+records that exact backup path and SHA-256 in
+`~/.codex/autonomy-kit/config-backup-manifest.json`; uninstall restores only that recorded
+backup, never an arbitrary newest `.bak-*` file.
 
 The kit does **not** use substring or "looks like a template" heuristics to decide ownership.
 v1.6.1 fixed exactly that: an earlier version treated a config as kit-managed when it merely

@@ -6,6 +6,32 @@ Verification note: `.github/workflows/tests.yml` runs the six shipped PowerShell
 Windows for pushes to `master`, pull requests, and manual dispatch. Local audit reports
 distinguish scripts run by the auditor from conclusions produced by GitHub Actions.
 
+## v2.0.0 - 2026-10-13
+
+Major: the installer now **reconciles its autonomy keys into an existing custom config**
+instead of leaving the whole file untouched. The behavior change on a custom `config.toml`
+is why this is a major version.
+
+### Changed
+- **Autonomy-key reconcile.** When `config.toml` exists but is not kit-owned, Setup now sets
+  only the kit's own keys in place -- `approval_policy = "never"`, `sandbox_mode =
+  "danger-full-access"`, and `[windows] sandbox = "elevated"` -- and leaves every other key,
+  table, comment, blank line, and the file's newline style byte-for-byte untouched. It backs
+  up first and prints each key it changed. Previously these configs were left entirely
+  unchanged, so a custom config that merely lacked `approval_policy = "never"` silently kept
+  prompting. This is a surgical key-setter, never a whole-file rewrite (the v1.6.1 clobber
+  bug was a whole-file rewrite; the reconcile path is regression-tested against it).
+- `developer_instructions` is **never** injected or rewritten on an existing config; the
+  staged profile under `~/.codex/autonomy-kit` remains a manual merge.
+- New switch `-SkipReconcile` leaves a custom config byte-for-byte untouched (the pre-2.0
+  behavior).
+
+### Added
+- `tests/Test-ConfigReconcile.ps1`: reconcile sets the keys and preserves the rest, is
+  idempotent, appends a `[windows]` table when absent, no-ops when already satisfied, and
+  honors `-SkipReconcile`. The install-surface clobber-guard test now runs its
+  byte-identical shapes with `-SkipReconcile`, keeping that contract for the opt-out path.
+
 ## v1.9.0 - 2026-10-13
 
 Switches off Codex's built-in dangerous-command classifier for this machine.

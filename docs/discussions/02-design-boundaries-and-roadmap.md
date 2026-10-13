@@ -8,8 +8,11 @@ Current design boundaries:
 
 - No-CLI normal path. If a user needs to install, update, check, test, refresh, or uninstall,
   there should be a double-click wrapper.
-- Existing custom Codex configs are preserved by default. Setup stages kit files for manual
-  merge instead of overwriting unknown user config.
+- Existing custom Codex configs are never wholesale-replaced. As of v2.0.0, setup reconciles
+  only the kit's own autonomy keys in place (backing up first) and leaves everything else
+  untouched; `-SkipReconcile` restores the old leave-entirely-alone behavior.
+  `developer_instructions` is never injected on an existing config; the full profile stays a
+  manual merge from the staged files.
 - When setup does overwrite a kit-owned config, it records the exact backup path and hash;
   uninstall does not guess from unrelated `.bak-*` files.
 - The elevated helper is powerful but structured. It accepts named development actions and

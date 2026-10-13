@@ -1,6 +1,6 @@
 # Codex Desktop Autonomy Kit User Manual
 
-Version 1.9.0 for Windows.
+Version 2.0.0 for Windows.
 
 ![Codex Desktop Autonomy Kit architecture](assets/codex-autonomy-architecture.svg)
 
@@ -143,11 +143,14 @@ Doctor does not create directories or write probe files. It is a read-only statu
 
 Pull or download the latest repo version, then double-click `Install-Autonomy.cmd`.
 
-Setup replaces `config.toml` only when the file is provably kit-owned: it matches the exact
-generated template (optionally differing only in the kit's own version comment line), or you
-passed `-ForceConfig`. Any other file is left byte-for-byte unchanged, including a config that
-has the kit marker but which you have edited since -- setup reports that case and leaves it
-alone. When it does overwrite, it backs up first.
+Setup replaces the whole `config.toml` only when the file is provably kit-owned: it matches
+the exact generated template (optionally differing only in the kit's own version comment
+line), or you passed `-ForceConfig`. Any other file is **never wholesale-replaced**. Instead
+(v2.0.0) setup reconciles just the kit's autonomy keys in place -- `approval_policy =
+"never"`, `sandbox_mode = "danger-full-access"`, `[windows] sandbox = "elevated"` -- and
+leaves every other key, table, comment, and the formatting untouched, backing up first and
+printing each change. `developer_instructions` is never injected on an existing config. Pass
+`-SkipReconcile` to leave a custom config byte-for-byte untouched.
 
 Setup never uses substring or "looks like a template" heuristics to decide ownership. v1.6.1
 fixed exactly that defect; see the changelog.
@@ -236,7 +239,7 @@ without repeated UAC prompts after the helper is installed.
 
 ## Versioning
 
-The current public release is v1.9.0. Setup writes the same version into the staged manifest
+The current public release is v2.0.0. Setup writes the same version into the staged manifest
 at `~/.codex/autonomy-kit/manifest.json`.
 
 ## Safety Notes
