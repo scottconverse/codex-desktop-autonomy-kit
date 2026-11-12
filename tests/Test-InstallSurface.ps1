@@ -43,6 +43,7 @@ try {
         'SECURITY.md',
         'tests\Test-HelperRuntime.ps1',
         'tests\Test-CommandRules.ps1',
+        'tests\Test-RuntimeCompat.ps1',
         'tests\Test-ConfigReconcile.ps1',
         'docs\BLOCKED-BY-POLICY.md'
     )

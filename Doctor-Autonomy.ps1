@@ -101,17 +101,85 @@ if (Test-Path -LiteralPath $rulesPath) {
         $stripVersion = { param($t) ($t -replace '(?m)^\s*#\s*version\s*=\s*"[^"]*"\s*$', '# version = "(current)"') }
         $current = ((& $stripVersion (& $norm $rulesRaw)) -eq (& $stripVersion (& $norm $generated)))
         L "  current with this kit" $(if ($current) { 'yes' } else { 'STALE - re-run Install-Autonomy.cmd' })
-        # Shell drift: shells seen in recent logs that the rules file does not cover.
-        $covered = @([regex]::Matches($rulesRaw, '(?im)^prefix_rule\(pattern=\["([A-Za-z]:\\\\.*?\.exe)"\]') |
-            ForEach-Object { ($_.Groups[1].Value -replace '\\\\', '\') })
-        $uncovered = @($shellPaths | Where-Object { $covered -notcontains $_ })
-        L "  shells covered" "$($covered.Count) in file; $($shellPaths.Count) discovered now"
-        if ($uncovered.Count) { L "  UNCOVERED shell(s)" (($uncovered -join '; ') + "  (re-run Install-Autonomy.cmd)") }
     } else {
         L "  current with this kit" "(cannot compare - Setup-Autonomy.ps1 not loadable)"
     }
 } else {
     L "rules file" "(missing - run Install-Autonomy.cmd to switch off Codex's dangerous-command list)"
+}
+
+Section "Codex runtime compatibility"
+# A rules file being present, and its listed executables existing, does not show that
+# it covers the executable Codex launches now. This section answers four separate
+# questions and never upgrades missing evidence to PASS. It is read-only: Doctor does
+# not regenerate, widen, or otherwise change rules, whatever it finds.
+if (-not $genAvailable) {
+    L "overall" "UNKNOWN (Setup-Autonomy.ps1 not loadable; no runtime check was run)"
+} else {
+    $health = Get-CodexRuntimeHealth -CodexRoot $cx -RulesPath $rulesPath
+    $active = $health.Active
+    $fmt = { param($d) if ($d) { ([datetime]$d).ToString("yyyy-MM-dd HH:mm:ss") + "Z" } else { "(unknown)" } }
+
+    # 1. Does each configured executable exist? (A missing file is not a mismatch.)
+    if ($health.RulesPresent) {
+        $missing = @($health.Configured | Where-Object { -not $_.Exists })
+        L "configured executables" "$(@($health.Configured).Count) listed; $($missing.Count) missing on disk"
+        foreach ($c in $health.Configured) { L $(if ($c.Exists) { "  exists" } else { "  MISSING" }) $c.Path }
+    } else {
+        L "configured executables" "(no rules file)"
+    }
+
+    # 2. Which executable does Codex actually launch?
+    L "active runtime" $active.Status
+    if ($active.Path) {
+        L "  executable" $active.Path
+        L "  source" $active.Source
+        L "  exists on disk" $(if ($active.Exists) { "yes" } else { "NO" })
+    }
+    foreach ($e in $active.Evidence) { L "  evidence" $e }
+    if ($active.SessionLog) {
+        L "  session log" (Split-Path -Leaf $active.SessionLog)
+        L "  session started" (& $fmt $active.SessionStartUtc)
+    }
+
+    # 3. Does the installed configuration list that executable?
+    L "rules list active runtime" $health.Match
+
+    # 4. Is a new chat needed for the session to hold the current rules?
+    $reloadText = switch ($health.Reload) {
+        "REQUIRED"     { "REQUIRED - rules written $(& $fmt $health.RulesWrittenUtc), after that session started; start a new Codex chat" }
+        "NOT_REQUIRED" { "not required - that session started after the rules were written $(& $fmt $health.RulesWrittenUtc)" }
+        default        { "UNKNOWN - no session start time to compare against" }
+    }
+    L "new Codex chat required" $reloadText
+
+    foreach ($u in $health.UncoveredInstalled) { L "installed runtime NOT listed" $u }
+
+    # Policy rejections are Codex's decision. They are counted separately from the
+    # questions above and are not an ACL failure, a missing executable, or (by
+    # themselves) a runtime mismatch.
+    if ($active.SessionLog) {
+        L "policy rejections (that session)" $(if ($active.RejectionCount) { "$($active.RejectionCount); most recent $(& $fmt $active.LastRejectionUtc)" } else { "none recorded" })
+    }
+
+    L "overall" $health.Overall
+    foreach ($n in $health.Notes) { L "  note" $n }
+    switch ($health.Overall) {
+        "PASS" {
+            L "  meaning" "the rules list the executable Codex launched and that session started after they were written"
+            L "  not shown" "that Codex will accept any given command; only a command run in a Codex chat shows that"
+        }
+        "MISMATCH" {
+            L "  to change" "Install-Autonomy.cmd regenerates the kit's rules when YOU run it; Doctor changes nothing"
+            L "  not shown" "that the mismatch caused any rejection; it is one candidate cause, unproven"
+        }
+        "UNKNOWN" {
+            L "  to resolve" "run a command in a new Codex chat, then run Doctor again"
+        }
+    }
+    if ($active.RejectionCount) {
+        L "  on rejections" "a rejection is Codex enforcing its command policy; do not respell or reroute the command to get past it"
+    }
 }
 
 Section "Elevated dev helper"

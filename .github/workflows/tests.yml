@@ -62,6 +62,10 @@ jobs:
         shell: pwsh
         run: ./tests/Test-CommandRules.ps1
 
+      - name: Runtime compatibility (active runtime, coverage, UNKNOWN, reload)
+        shell: pwsh
+        run: ./tests/Test-RuntimeCompat.ps1
+
       - name: Config reconcile (autonomy keys set in place, rest preserved)
         shell: pwsh
         run: ./tests/Test-ConfigReconcile.ps1

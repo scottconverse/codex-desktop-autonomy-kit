@@ -9,11 +9,12 @@ When you notice yourself reasoning about permissions instead of testing them:
 
 1. Run the probe. `Test-Path` the directory. Attempt a real write to a throwaway file.
    Try the command. Three seconds beats an argument.
-2. Distinguish the failure modes: a **policy veto** (`rejected: blocked by policy`) is
-   Codex's built-in dangerous-command list (force deletes, web-link openers), refused
-   because approvals are `never`. The kit's allow-rules switch it off; if you still hit it,
-   re-run `Install-Autonomy.cmd` or see `docs/BLOCKED-BY-POLICY.md`, and meanwhile the same
-   delete without `-Force` (or `[System.IO.File]::Delete()`) runs. A **real limit** (ACL,
+2. Distinguish the failure modes: a **policy rejection** (`rejected: blocked by policy`)
+   is Codex enforcing its command policy before the shell runs. It is not an ACL failure,
+   a missing executable, or a permission to ask for. Report it exactly, with the command,
+   and continue the rest of the task; do not respell or reroute the command to get past
+   it. Whether to change the rules is the owner's decision (`Doctor-Autonomy.cmd` shows
+   what the installed rules cover; see `docs/BLOCKED-BY-POLICY.md`). A **real limit** (ACL,
    UAC declined, lock, missing tool) is genuine and gets named precisely. An **imagined
    limit** is the common case.
 3. Report the probe result in one short block, then continue the task. Do not ask the

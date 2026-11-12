@@ -19,9 +19,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-ScriptSyntax.ps
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-NoHardcodedPaths.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-HelperTrust.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-HelperRuntime.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-CommandRules.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-RuntimeCompat.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-ConfigReconcile.ps1
 ```
 
-These are the same six scripts run by `Run-Tests.cmd` and the Windows GitHub Actions
+These are the same scripts run by `Run-Tests.cmd` and the Windows GitHub Actions
 workflow. PASS: every non-INFO check reports PASS.
 
 `Test-InstallSurface.ps1` includes an isolated first-run config check that runs

@@ -1,6 +1,6 @@
 # Codex Desktop Autonomy Kit
 
-**Version 2.0.0 - Windows** - a click-first setup kit for configuring Codex Desktop toward
+**Version 2.0.1 - Windows** - a click-first setup kit for configuring Codex Desktop toward
 maximum practical software-development autonomy on Windows development machines. See
 [CHANGELOG.md](CHANGELOG.md).
 
@@ -44,7 +44,8 @@ refresh, then restart Codex Desktop.
   profile for broad or high-blast-radius work.
 - `config.autonomy.example.toml` - example Codex autonomy config for manual merge.
 - `elevated-dev-helper/` - reusable, audited full-administrator helper for Windows machines where Codex Desktop cannot launch its shell with an admin token.
-- `tests/` - capability harness, behavioral test plan, and hardcoded-path regression guard.
+- `tests/` - capability harness, behavioral test plan, runtime-compatibility regression
+  tests, and hardcoded-path regression guard.
 - `skills/capability-check/` - shipped skill that makes an agent probe its own access instead of asserting limits it never tested.
 - `templates/AGENTS-capability-section.md` - the marker-delimited capability rule Setup appends to your global `AGENTS.md`.
 - `SECURITY.md` - reporting path and the elevated-helper threat-model boundary.
@@ -60,9 +61,10 @@ The kit fixes it with evidence instead:
 - **A probe protocol.** The `capability-check` skill tells the agent to actually run
   `Test-Path`, attempt a real write, try the command -- rather than reasoning about what a
   sandbox probably allows. Three seconds of testing replaces an argument.
-- **Failure-mode separation.** A policy veto (`rejected: blocked by policy`) is a spelling
-  problem: reformat and retry. A real limit (ACL, UAC declined, file lock, missing tool) gets
-  named precisely. An imagined limit is the common case, and gets tested away.
+- **Failure-mode separation.** A policy rejection (`rejected: blocked by policy`) is Codex
+  enforcing its command policy: it gets reported exactly, and is not respelled or rerouted.
+  A real limit (ACL, UAC declined, file lock, missing tool) gets named precisely. An
+  imagined limit is the common case, and gets tested away.
 - **A standing rule in `AGENTS.md`.** The installer appends it inside begin/end markers, only
   if absent, backing up first. Content you wrote there is never rewritten.
 - **A section in `CODEX-Desktop-Core.md`**, so the rule travels wherever the profile is used.
@@ -79,11 +81,26 @@ Codex cannot pause to ask about a flagged command, so it refuses it outright wit
 `rejected: blocked by policy` -- a ~0-second refusal with no model in the loop. The kit's own
 "capability check" cannot help here, because the command never runs.
 
-Setup writes a kit-owned execpolicy allow-list, `~/.codex/rules/autonomy-kit.rules`, that
-overrides the classifier for every flagged pattern, using shell paths discovered on your
-machine (no hardcoded paths). After installing, start a new Codex chat -- Codex reads its
-rules when a chat starts -- and the commands run. `Doctor-Autonomy.cmd` reports the file's
-state, including whether a Codex update moved its shell to a path the file does not yet cover.
+Setup writes a kit-owned execpolicy allow-list, `~/.codex/rules/autonomy-kit.rules`, intended
+to override the classifier for the flagged patterns, using shell paths discovered on your
+machine (no hardcoded paths). Codex reads its rules when a chat starts, so start a new chat
+after installing.
+
+**Known limitation: the rules name Codex's shell by absolute path, and that path moves.**
+Codex's bundled PowerShell has shipped in a per-user cache folder and, more recently, in a
+versioned packaged-runtime folder whose name changes with each runtime update. A rules file
+written before the move stays on disk, and every executable it lists can still exist, while
+Codex launches commands through an executable the file does not list. Setup now discovers
+installed packaged runtimes as well as cached ones, but rules written today still go stale
+at the next runtime update until you re-run `Install-Autonomy.cmd` and start a new chat.
+
+`Doctor-Autonomy.cmd` reports this as four separate facts -- whether each listed executable
+exists, which executable Codex actually launched, whether the rules list it, and whether a
+new chat is needed -- and says `UNKNOWN` when it cannot tell which executable Codex is
+using. A `PASS` there means the rules list the active executable. It does not mean Codex
+will accept a given command: that has only been shown when the command runs in a Codex chat.
+If Codex still rejects a command, that is its policy decision; see
+`docs/BLOCKED-BY-POLICY.md`.
 
 **This is a deliberate tradeoff for an owner-controlled development machine.** Once switched
 off, these commands never prompt again, in any mode. That includes Codex opening links in

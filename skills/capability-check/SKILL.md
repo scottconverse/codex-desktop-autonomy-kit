@@ -26,11 +26,11 @@ the workspace", or "you'll need to do that yourself" — **stop and run a probe 
 
 ## The distinction that actually matters
 
-Two very different failures wear the same mask:
+Three very different things wear the same mask:
 
 | Type | Looks like | What to do |
 |---|---|---|
-| **Policy veto** | `rejected: blocked by policy` at command launch, before the shell runs | Codex's built-in dangerous-command list (force deletes, web-link openers), refused because approvals are `never`. The kit's allow-rules switch it off; if you still hit it, re-run `Install-Autonomy.cmd` (or see `docs/BLOCKED-BY-POLICY.md`). Meanwhile the same delete without `-Force`, or `[System.IO.File]::Delete()`, runs. |
+| **Policy rejection** | `rejected: blocked by policy` at command launch, before the shell runs | Codex enforcing its command policy. Not an ACL failure, not a missing executable, not a permission to request. Report it exactly, with the command, and continue the rest of the task. Do not respell or reroute the command to get past it; changing the rules is the owner's decision (`Doctor-Autonomy.cmd` shows what the installed rules cover; see `docs/BLOCKED-BY-POLICY.md`). |
 | **Real technical limit** | Windows ACL denial, UAC declined, file lock, device absent, tool not installed | Genuine. Name it precisely and continue everything else. |
 | **Imagined limit** | You assumed sandboxing, workspace-only scope, or a missing permission without checking | **The common case. Test it.** |
 
@@ -52,7 +52,7 @@ $probe = Join-Path $env:USERPROFILE (".cap-probe-" + [guid]::NewGuid().ToString(
 Test-Path $probe
 [System.IO.File]::Delete($probe)
 
-# 3. Delete capability (note the policy-veto distinction above)
+# 3. Delete capability (a filesystem probe; it says nothing about command policy)
 [System.IO.File]::Delete("<a-throwaway-file-you-created>")
 
 # 4. Execution + network
@@ -111,10 +111,10 @@ Then **resume the actual task**. Do not ask Scott to re-confirm what he already 
 
 - "That's outside my sandbox" without running `Test-Path`.
 - Asking Scott to move a file into the workspace instead of reading it in place.
-- Treating a policy veto as a permission problem instead of a spelling problem.
+- Treating a policy rejection as a permission problem, or respelling the command to get past it.
 - Declaring a task impossible, then discovering it works when he pushes back.
 - Offering a manual workaround for something you can do yourself.
-- Saying "I'll need you to run that" when a helper or a permitted command form exists.
+- Saying "I'll need you to run that" when the installed helper can do it.
 
 ## Honesty still applies
 
