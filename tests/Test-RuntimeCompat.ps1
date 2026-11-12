@@ -27,7 +27,7 @@ try { . (Join-Path $kit "Setup-Autonomy.ps1") } finally { $env:CODEX_SETUP_SOURC
 
 # --- Fixture helpers ---------------------------------------------------------
 $fx = Join-Path $env:TEMP ("ckit-runtime-" + [guid]::NewGuid().ToString("n"))
-# TEMP can be an 8.3 short path (C:\Users\RUNNER~1\...) and .NET expands short names
+# TEMP can be an 8.3 short path (a profile folder shown as NAME~1) and .NET expands short names
 # once the directory exists. Create it and take the expanded form up front, so fixture
 # paths compare equal to the full paths the code under test returns.
 [System.IO.Directory]::CreateDirectory($fx) | Out-Null
