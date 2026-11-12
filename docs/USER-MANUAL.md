@@ -1,6 +1,6 @@
 # Codex Desktop Autonomy Kit User Manual
 
-Version 2.0.0 for Windows.
+Version 2.0.1 for Windows.
 
 ![Codex Desktop Autonomy Kit architecture](assets/codex-autonomy-architecture.svg)
 
@@ -55,7 +55,7 @@ The rule separates three cases, which is the part that makes it useful:
 
 | Case | What it looks like | Correct response |
 |------|--------------------|------------------|
-| Policy veto | `rejected: blocked by policy`, before the shell runs | Codex's built-in dangerous-command list, refused because approvals are `never`. The kit's command rules switch it off; if you still hit it, re-run Install and start a new chat (see below). Meanwhile the non-force delete, or `[System.IO.File]::Delete()`, runs. |
+| Policy rejection | `rejected: blocked by policy`, before the shell runs | Codex enforcing its command policy. Not an ACL failure or a missing executable. Report it exactly and continue the rest of the task; do not respell or reroute the command. Run Doctor to see what the installed rules cover (see below). |
 | Real limit | ACL denial, UAC declined, file lock, missing tool | Genuine. Name the exact error and continue everything else. |
 | Imagined limit | Assumed sandbox, workspace-only scope, permission never checked | The common case. Test it instead of asserting it. |
 
@@ -73,15 +73,29 @@ Codex has a built-in list of "dangerous" commands: **force deletes**
 browser, and so on). Because this kit sets `approval_policy = "never"`, Codex cannot pause to
 ask about one of these, so it refuses it instantly with `rejected: blocked by policy`.
 
-To stop that, Install writes `~/.codex/rules/autonomy-kit.rules`, a kit-owned allow-list that
-overrides the built-in list for every flagged pattern. It is built from shell paths found on
+Install writes `~/.codex/rules/autonomy-kit.rules`, a kit-owned allow-list intended to
+override the built-in list for the flagged patterns. It is built from shell paths found on
 your machine (nothing hardcoded), written without a byte-order mark so Codex's parser accepts
 it, and checked with Codex's own `execpolicy check` right after it is written; if the check
-fails, Install rolls the file back instead of leaving a broken one.
+fails, Install rolls the file back instead of leaving a broken one. That check confirms the
+file parses and that its rules match sample commands. It does not run a command inside a
+Codex chat, so it is not proof that a chat will accept one.
 
 - **Start a new Codex chat after installing** -- rules load when a chat starts.
-- **Doctor** shows whether the file is present, parser-safe, current, and whether a Codex
-  update has moved its shell somewhere the file does not yet cover (re-run Install to fix).
+- **The rules go stale when Codex's shell moves.** They name the shell by absolute path.
+  Codex's bundled PowerShell has moved from a per-user cache folder to a versioned
+  packaged-runtime folder, and that folder's name changes with each runtime update. The old
+  file, and the old executable, can both still exist while Codex launches through a path the
+  file does not list. Re-run Install after a Codex runtime update, then start a new chat.
+- **Doctor's "Codex runtime compatibility" section** reports, separately: whether each
+  executable in the rules exists; which executable Codex actually launched and the evidence
+  for it; whether the rules list that executable (`MATCH` / `MISMATCH`); whether a new chat
+  is required; and any installed Codex runtime the rules do not list. When it cannot
+  determine the active executable it reports `UNKNOWN`, never `PASS`. Doctor is read-only:
+  it never regenerates or widens the rules.
+- **`PASS` is about coverage, not outcomes.** It means the rules list the executable Codex
+  launched and that session started after the rules were written. Policy rejections seen in
+  the session are counted on their own line and do not change that verdict.
 - **Uninstall** deletes the kit-owned file and restores Codex's built-in behavior.
 - **`-SkipCommandRules`** at install time keeps Codex's list active.
 
@@ -239,7 +253,7 @@ without repeated UAC prompts after the helper is installed.
 
 ## Versioning
 
-The current public release is v2.0.0. Setup writes the same version into the staged manifest
+The current release is v2.0.1. Setup writes the same version into the staged manifest
 at `~/.codex/autonomy-kit/manifest.json`.
 
 ## Safety Notes

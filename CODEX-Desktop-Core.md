@@ -50,13 +50,14 @@ When you catch yourself reasoning about permissions instead of testing them:
 
 - Run the probe. `Test-Path` the directory, write a throwaway file, try the command.
   Three seconds of testing beats an argument.
-- Separate the failure modes. A **policy veto** (`rejected: blocked by policy`) is Codex's
-  built-in dangerous-command list (force deletes, web-link openers), refused because
-  approvals are set to `never`. This kit ships allow-rules that switch it off; if you still
-  hit it, re-run `Install-Autonomy.cmd` (or see `docs/BLOCKED-BY-POLICY.md`). Until then, the
-  same delete without `-Force`, or `[System.IO.File]::Delete()` /
-  `[System.IO.Directory]::Delete()`, runs. A **real limit** (ACL, UAC declined, file lock, missing tool) is genuine and gets
-  named precisely. An **imagined limit** is the common case.
+- Separate the failure modes. A **policy rejection** (`rejected: blocked by policy`) is
+  Codex enforcing its command policy before the shell runs. It is not an ACL failure, a
+  missing executable, or a permission to ask for. Report it exactly, with the command, and
+  continue the rest of the task; do not respell or reroute the command to get past it. The
+  owner decides whether to change the rules (`Doctor-Autonomy.cmd` shows what the installed
+  rules cover; see `docs/BLOCKED-BY-POLICY.md`). A **real limit** (ACL, UAC declined, file
+  lock, missing tool) is genuine and gets named precisely. An **imagined limit** is the
+  common case.
 - Assume capability by default across `C:\` -- read, write, delete, execute, network,
   Git/GitHub, package installs -- until a probe proves otherwise. Use the elevated
   helper when its task exists rather than declaring admin work impossible.

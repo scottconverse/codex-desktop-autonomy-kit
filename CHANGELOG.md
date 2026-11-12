@@ -2,9 +2,72 @@
 
 All notable changes to the Codex Desktop Autonomy Kit. Dates are UTC.
 
-Verification note: `.github/workflows/tests.yml` runs the six shipped PowerShell checks on
+Verification note: `.github/workflows/tests.yml` runs the shipped PowerShell checks on
 Windows for pushes to `master`, pull requests, and manual dispatch. Local audit reports
 distinguish scripts run by the auditor from conclusions produced by GitHub Actions.
+
+## v2.0.1 - 2026-11-12
+
+Runtime compatibility detection. An installed kit could keep a rules file naming one
+PowerShell executable while Codex launched commands through another, with both files present
+on disk, and nothing reported the difference until a session had already used the new path.
+
+### Observed
+- Codex's bundled PowerShell moved from the per-user cache
+  (`.cache\codex-runtimes\codex-primary-runtime\...`) to a versioned packaged runtime
+  (`WindowsApps\OpenAI.CodexPrimaryRuntime.v<version>_...`). The cached runtime stayed on
+  disk. Rules written before the move listed only the cached path.
+- With those rules, `codex execpolicy check` matched no rule for a command launched through
+  the packaged path, and matched the allow rule for the same command through the cached path.
+- In the same session Codex rejected a script containing a force delete with
+  `rejected: blocked by policy`. The missing rule is consistent with that rejection. It has
+  **not** been shown to be its cause: no run with a covering rule loaded has been observed.
+
+### Fixed
+- **Discovery** (`Get-CodexCommandRulesShellPaths`) now includes installed packaged runtimes
+  as well as cached ones. Previously a packaged runtime entered discovery only by appearing in
+  a session log, so regenerated rules were one runtime update behind.
+- **Session logs are read while Codex has them open.** The live session's log is held open for
+  writing; the new evidence reader opens it shared instead of failing on it.
+
+### Added
+- **Doctor: "Codex runtime compatibility" section**, reporting separately whether each
+  configured executable exists; which executable Codex actually launched (from the process
+  tree when Doctor runs inside Codex, otherwise from structured launch records in the newest
+  session log); whether the rules list it (`MATCH` / `MISMATCH` / `UNKNOWN`); whether a new
+  chat is required; installed runtimes the rules do not list; and policy rejections recorded
+  in that session. `overall` is `PASS`, `MISMATCH`, `RELOAD_REQUIRED`, `UNKNOWN`, or
+  `NOT_INSTALLED`. When the active executable cannot be determined, the result is `UNKNOWN`
+  with the evidence available, never `PASS`.
+- `tests/Test-RuntimeCompat.ps1`: fixture-based regression tests (old and new paths both
+  present; packaged runtime replacing a cached one; paths with spaces; custom roots; unknown
+  active runtime; repeated setup and Doctor runs; stale rules versus rules loaded by a new
+  session; rejection counted separately; process-tree detection; prose paths not counted as
+  launches). Wired into `Run-Tests.cmd` and the CI workflow.
+
+### Changed
+- **Doctor never changes rules**, and no longer prints an "UNCOVERED shell(s)" line built from
+  any path that appeared anywhere in a log. Regenerating rules remains something only
+  `Install-Autonomy.cmd` does, when the owner runs it.
+- **Guidance no longer tells an agent to get around a policy rejection.** The core profile,
+  the `AGENTS.md` capability section, the `capability-check` skill, the README, the manual,
+  and `docs/BLOCKED-BY-POLICY.md` previously described a rejection as "a spelling problem"
+  and suggested the same delete without the force flag or through a .NET call. They now say
+  to report the rejection exactly and not respell or reroute the command.
+- **Documentation claims narrowed.** Removed the statements that the rules override the
+  built-in list "for every flagged pattern" and that after installing "the commands run".
+  The docs now state what `execpolicy check` does and does not establish, and that the
+  absolute-path rules go stale at each runtime update.
+
+### Not changed
+- No rule was broadened, no safeguard disabled, and nothing rewrites allow-rules in response
+  to a rejection. The rule patterns Setup generates are the same as in v2.0.0; only the set
+  of Codex-bundled shell locations it can discover grew.
+
+### Upgrade note
+- Re-run `Install-Autonomy.cmd` to restage the corrected profile, skill, and `AGENTS.md`
+  section. A custom `config.toml` whose `developer_instructions` was hand-merged from the
+  old core profile still carries the old wording until you merge the new one.
 
 ## v2.0.0 - 2026-10-13
 

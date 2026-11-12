@@ -27,7 +27,7 @@ param(
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $kit = $PSScriptRoot
-$kitVersion = "2.0.0"
+$kitVersion = "2.0.1"
 $configMarker = "# Codex Desktop Autonomy Kit managed config"
 $agentsMarkerBegin = "<!-- Codex Desktop Autonomy Kit: capability-section begin -->"
 $agentsMarkerEnd = "<!-- Codex Desktop Autonomy Kit: capability-section end -->"
@@ -226,7 +226,11 @@ $commandRulesFileName = "autonomy-kit.rules"
 function Get-CodexCommandRulesShellPaths {
     # Discover every PowerShell/cmd executable Codex might launch on this machine.
     # Returns absolute paths that exist, de-duplicated case-insensitively.
-    param([string]$CodexRoot)
+    param(
+        [string]$CodexRoot,
+        [string]$CacheRoot = (Join-Path $env:USERPROFILE ".cache\codex-runtimes"),
+        [scriptblock]$PackageLookup
+    )
     $found = New-Object System.Collections.Generic.List[string]
     $seen = New-Object System.Collections.Generic.HashSet[string]([StringComparer]::OrdinalIgnoreCase)
     $add = {
@@ -250,8 +254,14 @@ function Get-CodexCommandRulesShellPaths {
             foreach ($m in $re.Matches($raw)) { & $add ($m.Groups[1].Value -replace '\\\\', '\') }
         }
     }
-    # 2. Codex bundled runtime pwsh; the wildcard tolerates a renamed runtime folder.
-    foreach ($p in (Get-ChildItem -Path (Join-Path $env:USERPROFILE ".cache\codex-runtimes\*\dependencies\native\powershell\pwsh.exe") -ErrorAction SilentlyContinue)) { & $add $p.FullName }
+    # 2. Codex bundled runtime pwsh, in every place Codex installs it: the per-user
+    #    cache (the wildcard tolerates a renamed runtime folder) and the versioned
+    #    packaged runtime, whose folder name changes with every runtime update. A
+    #    packaged runtime that no session has used yet appears in no log, so source 1
+    #    alone leaves the rules one update behind.
+    $runtimeArgs = @{ CacheRoot = $CacheRoot }
+    if ($PackageLookup) { $runtimeArgs.PackageLookup = $PackageLookup }
+    foreach ($r in (Get-CodexInstalledRuntimeShells @runtimeArgs)) { & $add $r.Path }
     # 3. Shells on PATH.
     foreach ($name in @("pwsh", "powershell", "cmd")) {
         foreach ($c in (Get-Command $name -All -ErrorAction SilentlyContinue)) { if ($c.Source) { & $add $c.Source } }
@@ -402,6 +412,301 @@ function Write-CodexCommandRules {
         throw "Codex command-rules validation failed for: $($bad -join ', ')"
     }
     Note "command-rules validated (force-delete script + single, and link opener all allow)"
+}
+
+# --- Runtime compatibility (v2.0.1) ------------------------------------------
+# A rules file that exists, and whose listed executables exist, says nothing about
+# whether it covers the executable Codex launches NOW. Codex's bundled PowerShell
+# moves (per-user cache -> versioned packaged runtime, and to a new folder on each
+# runtime update) while the old file can stay on disk. These functions separate
+# four questions that must not be collapsed into one "present" check:
+#   1. does each configured executable exist?
+#   2. which executable did the current/most recent Codex session actually launch?
+#   3. does the installed configuration list that executable?
+#   4. was the configuration written after that session started (new chat needed)?
+# Everything here is read-only. Nothing in this section writes, regenerates, or
+# widens rules; when the evidence is insufficient the answer is UNKNOWN, never PASS.
+function Get-CodexInstalledRuntimeShells {
+    # Codex-bundled pwsh executables installed on this machine, whether or not any
+    # session has used them. PackageLookup is injectable so tests need no real package.
+    param(
+        [string]$CacheRoot = (Join-Path $env:USERPROFILE ".cache\codex-runtimes"),
+        [scriptblock]$PackageLookup = { Get-AppxPackage -Name "OpenAI.CodexPrimaryRuntime*" -ErrorAction Stop 3>$null }
+    )
+    $out = New-Object System.Collections.Generic.List[object]
+    $rel = "dependencies\native\powershell\pwsh.exe"
+    if ($CacheRoot -and (Test-Path -LiteralPath $CacheRoot)) {
+        foreach ($dir in (Get-ChildItem -LiteralPath $CacheRoot -Directory -ErrorAction SilentlyContinue)) {
+            $exe = Join-Path $dir.FullName $rel
+            if (Test-Path -LiteralPath $exe -PathType Leaf) {
+                $out.Add([pscustomobject]@{ Path = [System.IO.Path]::GetFullPath($exe); Kind = "cache"; Version = $null })
+            }
+        }
+    }
+    $pkgs = @()
+    try { $pkgs = @(& $PackageLookup) } catch { $pkgs = @() }
+    foreach ($pkg in $pkgs) {
+        if (-not $pkg -or -not $pkg.InstallLocation) { continue }
+        $exe = Join-Path ([string]$pkg.InstallLocation) $rel
+        if (Test-Path -LiteralPath $exe -PathType Leaf) {
+            $out.Add([pscustomobject]@{ Path = [System.IO.Path]::GetFullPath($exe); Kind = "package"; Version = [string]$pkg.Version })
+        }
+    }
+    return , $out.ToArray()
+}
+
+function Get-CodexSessionShellEvidence {
+    # What recent Codex session logs record about launches. Only structured
+    # CommandExecution records count as a launch: a path that merely appears in
+    # prose or command output is not evidence of what Codex executed.
+    # Returns sessions newest-first; a log that could not be read is reported, not hidden.
+    param([string]$CodexRoot, [int]$MaxLogs = 25, [long]$MaxBytes = 20MB)
+    $sessions = Join-Path $CodexRoot "sessions"
+    $list = New-Object System.Collections.Generic.List[object]
+    if (-not (Test-Path -LiteralPath $sessions)) { return , $list.ToArray() }
+    $launchRe = [regex]'"type":"CommandExecution".*?"command":\["((?:[^"\\]|\\.)*)"'
+    $tsRe = [regex]'^\{"timestamp":"([^"]+)"'
+    # A real rejection is Codex's own error text in a tool result. The kit's docs quote
+    # the phrase too (and agents print those docs into logs), so the docs' elided
+    # example "Rejected(... rejected" is excluded.
+    $rejRe = [regex]'Rejected\((?!\.\.\.).*?rejected: blocked by policy'
+    $parseTs = {
+        param([string]$t)
+        if (-not $t) { return $null }
+        try {
+            return [datetime]::Parse($t, [Globalization.CultureInfo]::InvariantCulture,
+                ([Globalization.DateTimeStyles]::AssumeUniversal -bor [Globalization.DateTimeStyles]::AdjustToUniversal))
+        } catch { return $null }
+    }
+    $logs = Get-ChildItem -LiteralPath $sessions -Recurse -Filter "*.jsonl" -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTimeUtc -Descending | Select-Object -First $MaxLogs
+    foreach ($log in $logs) {
+        $entry = [pscustomobject]@{
+            Log = $log.FullName; Readable = $true; Reason = $null
+            StartUtc = $null; LastWriteUtc = $log.LastWriteTimeUtc
+            LaunchCount = 0; LastLaunchPath = $null; LastLaunchUtc = $null; Paths = @()
+            RejectionCount = 0; LastRejectionUtc = $null
+        }
+        if ($log.Length -gt $MaxBytes) {
+            $entry.Readable = $false; $entry.Reason = "log larger than $MaxBytes bytes; not read"
+            $list.Add($entry); continue
+        }
+        $paths = New-Object System.Collections.Generic.List[string]
+        $reader = $null
+        try {
+            # Codex keeps the live session's log open for writing; open it shared so
+            # the newest (most relevant) log is readable while a chat is running.
+            $stream = New-Object System.IO.FileStream($log.FullName, [System.IO.FileMode]::Open,
+                [System.IO.FileAccess]::Read, ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
+            $reader = New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::UTF8)
+            while ($null -ne ($line = $reader.ReadLine())) {
+                if (-not $entry.StartUtc) {
+                    $m0 = $tsRe.Match($line)
+                    if ($m0.Success) { $entry.StartUtc = & $parseTs $m0.Groups[1].Value }
+                }
+                if ($line.IndexOf('"type":"CommandExecution"', [StringComparison]::Ordinal) -ge 0) {
+                    $m = $launchRe.Match($line)
+                    if ($m.Success) {
+                        $argv0 = $null
+                        try { $argv0 = [string](('"' + $m.Groups[1].Value + '"') | ConvertFrom-Json) } catch { $argv0 = $null }
+                        if ($argv0) {
+                            $entry.LaunchCount++
+                            $entry.LastLaunchPath = $argv0
+                            $mt = $tsRe.Match($line)
+                            if ($mt.Success) { $entry.LastLaunchUtc = & $parseTs $mt.Groups[1].Value }
+                            if (-not ($paths | Where-Object { $_ -ieq $argv0 })) { $paths.Add($argv0) }
+                        }
+                    }
+                }
+                if ($line.IndexOf('blocked by policy', [StringComparison]::Ordinal) -ge 0 -and
+                    $line.IndexOf('_call_output"', [StringComparison]::Ordinal) -ge 0 -and $rejRe.IsMatch($line)) {
+                    $entry.RejectionCount++
+                    $mr = $tsRe.Match($line)
+                    if ($mr.Success) { $entry.LastRejectionUtc = & $parseTs $mr.Groups[1].Value }
+                }
+            }
+        } catch {
+            $entry.Readable = $false; $entry.Reason = "log could not be read: $($_.Exception.Message)"
+        } finally {
+            if ($reader) { $reader.Dispose() }
+        }
+        if (-not $entry.StartUtc) { $entry.StartUtc = $log.CreationTimeUtc }
+        $entry.Paths = $paths.ToArray()
+        $list.Add($entry)
+    }
+    return , $list.ToArray()
+}
+
+function Get-CodexActiveRuntime {
+    # The executable Codex launches commands through, with the evidence for it.
+    # KNOWN only from (a) this process's own ancestry -- the shell whose parent is
+    # codex.exe, when diagnostics run inside a Codex session -- or (b) the most recent
+    # launch in the NEWEST session log. Older-session evidence is reported but does
+    # not make the answer KNOWN: the runtime may have changed since.
+    param(
+        [string]$CodexRoot,
+        [object[]]$ProcessTable,
+        [int]$StartPid = $PID,
+        [int]$MaxLogs = 25,
+        [long]$MaxBytes = 20MB
+    )
+    $evidence = New-Object System.Collections.Generic.List[string]
+    $result = [pscustomobject]@{
+        Status = "UNKNOWN"; Path = $null; Source = $null; Exists = $null
+        SessionLog = $null; SessionStartUtc = $null; LastLaunchUtc = $null
+        RejectionCount = 0; LastRejectionUtc = $null; Evidence = @()
+    }
+
+    # The function returns one array object; do not wrap the call in @() (that nests it).
+    $sessions = Get-CodexSessionShellEvidence -CodexRoot $CodexRoot -MaxLogs $MaxLogs -MaxBytes $MaxBytes
+    $newest = if ($sessions.Count) { $sessions[0] } else { $null }
+    if ($newest) {
+        $result.SessionLog = $newest.Log
+        $result.SessionStartUtc = $newest.StartUtc
+        $result.RejectionCount = $newest.RejectionCount
+        $result.LastRejectionUtc = $newest.LastRejectionUtc
+    }
+
+    # (a) Process ancestry.
+    if (-not $PSBoundParameters.ContainsKey('ProcessTable')) {
+        try { $ProcessTable = @(Get-CimInstance Win32_Process -ErrorAction Stop | Select-Object ProcessId, ParentProcessId, Name, ExecutablePath) }
+        catch { $ProcessTable = @() }
+    }
+    $byId = @{}
+    foreach ($p in @($ProcessTable)) { if ($p) { $byId[[int]$p.ProcessId] = $p } }
+    $cur = $StartPid
+    for ($i = 0; $i -lt 32 -and $byId.ContainsKey([int]$cur); $i++) {
+        $proc = $byId[[int]$cur]
+        $parentId = [int]$proc.ParentProcessId
+        if (-not $byId.ContainsKey($parentId)) { break }
+        $parent = $byId[$parentId]
+        if ([string]$parent.Name -match '^(?i)codex(\.exe)?$' -and $proc.ExecutablePath) {
+            $result.Status = "KNOWN"; $result.Source = "process-tree"
+            $result.Path = [string]$proc.ExecutablePath
+            $evidence.Add("this process descends from codex.exe (pid $parentId) through $($proc.Name) (pid $($proc.ProcessId))")
+            break
+        }
+        $cur = $parentId
+    }
+
+    # (b) Newest session log.
+    if ($result.Status -ne "KNOWN") {
+        if (-not $newest) {
+            $evidence.Add("no Codex session logs found under $(Join-Path $CodexRoot 'sessions')")
+        } elseif (-not $newest.Readable) {
+            $evidence.Add("newest session log not usable: $($newest.Reason) ($($newest.Log))")
+        } elseif ($newest.LaunchCount -gt 0) {
+            $result.Status = "KNOWN"; $result.Source = "session-log"
+            $result.Path = $newest.LastLaunchPath
+            $result.LastLaunchUtc = $newest.LastLaunchUtc
+            $evidence.Add("newest session log records $($newest.LaunchCount) command launch(es); most recent through this executable")
+            if (@($newest.Paths).Count -gt 1) { $evidence.Add("that session launched through $(@($newest.Paths).Count) different executables: $(@($newest.Paths) -join '; ')") }
+        } else {
+            $evidence.Add("newest session log records no command launches ($($newest.Log))")
+        }
+        if ($result.Status -ne "KNOWN") {
+            $older = $sessions | Select-Object -Skip 1 | Where-Object { $_.Readable -and $_.LaunchCount -gt 0 } | Select-Object -First 1
+            if ($older) { $evidence.Add("an OLDER session (started $($older.StartUtc.ToString('u'))) last launched through: $($older.LastLaunchPath) -- not proof of the current runtime") }
+        }
+    }
+
+    if ($result.Path) { $result.Exists = [bool](Test-Path -LiteralPath $result.Path -PathType Leaf) }
+    $result.Evidence = $evidence.ToArray()
+    return $result
+}
+
+function Get-CommandRulesConfiguredShells {
+    # Absolute executable paths that a rules file allows by path-only prefix rule.
+    param([string]$RulesText)
+    if (-not $RulesText) { return , @() }
+    $paths = @([regex]::Matches($RulesText, '(?im)^prefix_rule\(pattern=\["([A-Za-z]:\\\\(?:[^"\\]|\\.)*)"\]') |
+        ForEach-Object { try { [string](('"' + $_.Groups[1].Value + '"') | ConvertFrom-Json) } catch { $null } } |
+        Where-Object { $_ })
+    return , $paths
+}
+
+function Get-CodexRuntimeHealth {
+    # Read-only verdict on whether the installed rules cover the runtime Codex uses.
+    #   Overall = NOT_INSTALLED    no rules file
+    #             MISMATCH         active executable known and not listed
+    #             RELOAD_REQUIRED  listed, but the rules were written after the
+    #                              evidenced session started
+    #             UNKNOWN          active executable not reliably determined
+    #             PASS             active executable known, present, listed, and the
+    #                              evidenced session started after the rules were written
+    # PASS is a statement about configuration coverage only. It does not predict
+    # that Codex will accept any particular command: a policy rejection is Codex's
+    # decision and is reported separately (RejectionCount), never "fixed" here.
+    param(
+        [string]$CodexRoot,
+        [string]$RulesPath,
+        [object]$ActiveRuntime,
+        [object[]]$InstalledRuntimes
+    )
+    if (-not $RulesPath) { $RulesPath = Join-Path (Join-Path $CodexRoot "rules") $commandRulesFileName }
+    if (-not $ActiveRuntime) { $ActiveRuntime = Get-CodexActiveRuntime -CodexRoot $CodexRoot }
+    if (-not $PSBoundParameters.ContainsKey('InstalledRuntimes')) { $InstalledRuntimes = Get-CodexInstalledRuntimeShells }
+
+    $same = { param([string]$a, [string]$b)
+        if (-not $a -or -not $b) { return $false }
+        try { return [string]::Equals([System.IO.Path]::GetFullPath($a), [System.IO.Path]::GetFullPath($b), [StringComparison]::OrdinalIgnoreCase) }
+        catch { return [string]::Equals($a, $b, [StringComparison]::OrdinalIgnoreCase) }
+    }
+    $notes = New-Object System.Collections.Generic.List[string]
+    $health = [pscustomobject]@{
+        RulesPath = $RulesPath; RulesPresent = $false; RulesWrittenUtc = $null
+        Configured = @(); Active = $ActiveRuntime
+        Match = "UNKNOWN"; Reload = "UNKNOWN"; Overall = "UNKNOWN"
+        UncoveredInstalled = @(); Notes = @()
+    }
+
+    if (-not (Test-Path -LiteralPath $RulesPath -PathType Leaf)) {
+        $health.Overall = "NOT_INSTALLED"
+        $notes.Add("no rules file at $RulesPath")
+        $health.Notes = $notes.ToArray()
+        return $health
+    }
+    $health.RulesPresent = $true
+    $health.RulesWrittenUtc = (Get-Item -LiteralPath $RulesPath).LastWriteTimeUtc
+    $configured = Get-CommandRulesConfiguredShells -RulesText (Get-Content -LiteralPath $RulesPath -Raw)
+    $health.Configured = @($configured | ForEach-Object {
+        [pscustomobject]@{ Path = $_; Exists = [bool](Test-Path -LiteralPath $_ -PathType Leaf) }
+    })
+    $health.UncoveredInstalled = @($InstalledRuntimes | Where-Object { $_ } | Where-Object {
+        $rp = $_.Path; -not ($configured | Where-Object { & $same $_ $rp })
+    } | ForEach-Object { $_.Path })
+
+    if ($ActiveRuntime.Status -eq "KNOWN" -and $ActiveRuntime.Path) {
+        $covered = [bool]($configured | Where-Object { & $same $_ $ActiveRuntime.Path })
+        $health.Match = if ($covered) { "MATCH" } else { "MISMATCH" }
+    }
+    if ($ActiveRuntime.SessionStartUtc) {
+        $health.Reload = if ($health.RulesWrittenUtc -gt $ActiveRuntime.SessionStartUtc) { "REQUIRED" } else { "NOT_REQUIRED" }
+    }
+
+    if ($ActiveRuntime.Status -ne "KNOWN") {
+        $health.Overall = "UNKNOWN"
+        $notes.Add("the executable Codex currently launches could not be determined; the listed executables existing is not evidence of coverage")
+    } elseif ($health.Match -eq "MISMATCH") {
+        $health.Overall = "MISMATCH"
+        $notes.Add("the installed rules do not list the executable Codex launched")
+    } elseif ($ActiveRuntime.Exists -eq $false) {
+        $health.Overall = "UNKNOWN"
+        $notes.Add("the last executable Codex launched no longer exists; the next session will use a different one")
+    } elseif ($health.Reload -eq "REQUIRED") {
+        $health.Overall = "RELOAD_REQUIRED"
+        $notes.Add("the rules were written after the evidenced session started; start a new Codex chat before relying on them")
+    } elseif ($health.Reload -eq "UNKNOWN") {
+        $health.Overall = "UNKNOWN"
+        $notes.Add("no session start time is available, so whether a session has loaded these rules is not known")
+    } else {
+        $health.Overall = "PASS"
+    }
+    if ($health.UncoveredInstalled.Count) {
+        $notes.Add("installed Codex runtime(s) not listed in the rules; a session that switches to one will not be covered")
+    }
+    $health.Notes = $notes.ToArray()
+    return $health
 }
 
 # --- Autonomy-key reconcile (v2.0.0) -----------------------------------------
