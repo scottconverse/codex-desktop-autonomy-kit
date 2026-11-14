@@ -116,7 +116,12 @@ Section "Codex runtime compatibility"
 if (-not $genAvailable) {
     L "overall" "UNKNOWN (Setup-Autonomy.ps1 not loadable; no runtime check was run)"
 } else {
-    $health = Get-CodexRuntimeHealth -CodexRoot $cx -RulesPath $rulesPath
+    # This process belongs to the default installation, not an arbitrary root
+    # being audited. Custom roots must use their own session evidence.
+    $runtimeArgs = @{ CodexRoot = $cx }
+    if (-not $isDefaultRoot) { $runtimeArgs.ProcessTable = @() }
+    $rootRuntime = Get-CodexActiveRuntime @runtimeArgs
+    $health = Get-CodexRuntimeHealth -CodexRoot $cx -RulesPath $rulesPath -ActiveRuntime $rootRuntime
     $active = $health.Active
     $fmt = { param($d) if ($d) { ([datetime]$d).ToString("yyyy-MM-dd HH:mm:ss") + "Z" } else { "(unknown)" } }
 

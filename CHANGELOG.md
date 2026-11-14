@@ -6,6 +6,14 @@ Verification note: `.github/workflows/tests.yml` runs the shipped PowerShell che
 Windows for pushes to `master`, pull requests, and manual dispatch. Local audit reports
 distinguish scripts run by the auditor from conclusions produced by GitHub Actions.
 
+## Unreleased
+
+### Fixed
+- Doctor now uses only the audited root's session evidence for a non-default Codex
+  root. The running default installation's process ancestry can no longer override
+  custom-root runtime, unknown-evidence, or policy-rejection diagnostics. Default-root
+  diagnostics retain live process-tree detection.
+
 ## v2.0.1 - 2026-11-12
 
 Runtime compatibility detection. An installed kit could keep a rules file naming one
